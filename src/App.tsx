@@ -13,6 +13,7 @@ import Profile from "./pages/Profile";
 import ProfileEdit from "./pages/ProfileEdit";
 import Admin from "./pages/Admin";
 import Tasks from "./pages/Tasks";
+import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ const App = () => (
             <Route path="/profile/:id" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/notifications" element={<Notifications />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

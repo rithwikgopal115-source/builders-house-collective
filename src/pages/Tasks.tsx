@@ -20,20 +20,24 @@ const Tasks = () => {
 
   useEffect(() => {
     document.title = "tasks — builders house";
+    // Only query after we know the user is approved — RLS will deny otherwise.
+    if (!profile?.is_approved) return;
     load();
-  }, []);
+  }, [profile?.is_approved]);
 
   const load = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("tasks")
       .select("id, user_id, content, status, created_at, profiles!tasks_user_id_fkey(display_name, avatar_url)")
       .order("status", { ascending: true })
       .order("created_at", { ascending: false });
+    if (error) { console.error(error); return; }
     setTasks((data ?? []) as any);
   };
 
   const add = async () => {
-    if (!user || !draft.trim()) return;
+    if (!user || !profile?.is_approved) { toast.error("only approved members can add tasks"); return; }
+    if (!draft.trim()) return;
     const { error } = await supabase.from("tasks").insert({
       user_id: user.id, content: draft.trim(), status: "open", visibility: "community",
     });

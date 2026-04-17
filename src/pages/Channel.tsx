@@ -26,6 +26,10 @@ const ChannelPage = () => {
 
   const load = useCallback(async () => {
     if (!slug) return;
+    // Wait until auth has resolved — RLS on posts requires either a public-visible
+    // channel + public visibility, or an approved auth.uid. Querying mid-bootstrap
+    // returns 0 rows or a 401 depending on token state.
+    if (loading) return;
     const { data: ch } = await supabase.from("channels").select("*").eq("slug", slug).maybeSingle();
     if (!ch) { setNotFound(true); return; }
     setChannel(ch);
@@ -54,7 +58,7 @@ const ChannelPage = () => {
       });
       setTopContributors(Object.values(counts).sort((a, b) => b.n - a.n).slice(0, 5));
     }
-  }, [slug, isApproved]);
+  }, [slug, isApproved, loading]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -94,7 +98,7 @@ const ChannelPage = () => {
       <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
         <nav className="hairline-b">
           <div className="max-w-4xl mx-auto px-6 md:px-10 py-5 flex items-center justify-between">
-            <Link to="/" className="text-sm font-medium tracking-tight">← builders house</Link>
+            <Link to={user ? "/home" : "/"} className="text-sm font-medium tracking-tight">← builders house</Link>
             <Link to="/login" className="text-xs font-mono uppercase tracking-wider text-muted-foreground hover:text-primary">login</Link>
           </div>
         </nav>

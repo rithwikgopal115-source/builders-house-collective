@@ -1,18 +1,38 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Lock, Pin, Zap, Lightbulb, Music, Briefcase, Trophy, X } from "lucide-react";
+import { Lock, Pin, Zap, Lightbulb, Music, Briefcase, Trophy } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 const PLACEHOLDER_VIDEO = "https://www.youtube.com/embed/dQw4w9WgXcQ"; // swap when ready
+const VIDEO_SEEN_KEY = "bh_video_seen_v1";
 
 interface Channel { id: string; slug: string; name: string; icon: string | null; color: string | null; is_public_visible: boolean | null; sort_order: number | null; }
 
+// Vivid Windows Phone live-tile palette
+const TILES: Record<string, { bg: string; fg: string; icon: any; glow?: boolean }> = {
+  "resources": { bg: "#E8734A", fg: "#0D0D0D", icon: Pin, glow: true },
+  "ai-news":   { bg: "#1D6AE5", fg: "#FFFFFF", icon: Zap },
+  "ideas":     { bg: "#F5C518", fg: "#1A1500", icon: Lightbulb },
+  "vibing":    { bg: "#7C3AED", fg: "#FFFFFF", icon: Music },
+  "hiring":    { bg: "#16A34A", fg: "#FFFFFF", icon: Briefcase },
+  "wins":      { bg: "#EA580C", fg: "#FFFFFF", icon: Trophy },
+};
+
 const Index = () => {
   const nav = useNavigate();
-  const [showVideo, setShowVideo] = useState(true);
+  const { user, profile, loading } = useAuth();
+
+  // Show video only on the first visit per browser session (sessionStorage).
+  // Spec asks for "every page load" but the user reported it kept reappearing
+  // on every internal navigation, so we scope it to the session.
+  const [showVideo, setShowVideo] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !sessionStorage.getItem(VIDEO_SEEN_KEY);
+  });
   const [channels, setChannels] = useState<Channel[]>([]);
   const [yoloMode, setYoloMode] = useState<boolean>(false);
   const [lockedModal, setLockedModal] = useState<string | null>(null);
@@ -33,6 +53,15 @@ const Index = () => {
       .then(({ data }) => setYoloMode(!!data?.auto_yolo_enabled));
   }, []);
 
+  const dismissVideo = () => {
+    sessionStorage.setItem(VIDEO_SEEN_KEY, "1");
+    setShowVideo(false);
+  };
+
+  // Send approved members straight to /home — never bounce them back to landing.
+  if (!loading && user && profile?.is_approved) return <Navigate to="/home" replace />;
+  if (!loading && user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
+
   const openTile = (c: Channel) => {
     if (c.is_public_visible) nav(`/channel/${c.slug}`);
     else setLockedModal(c.name);
@@ -51,33 +80,25 @@ const Index = () => {
       {/* Main layout */}
       <div className={`min-h-screen pt-20 pb-10 px-6 md:px-10 transition-all ${showVideo ? "blur-sm pointer-events-none" : ""}`}>
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 max-w-7xl mx-auto">
-          {/* Tile grid */}
-          <div className="grid grid-cols-4 auto-rows-[110px] md:auto-rows-[140px] gap-3">
+          {/* Tile grid — Windows Phone live tiles, tight 8px gaps */}
+          <div className="grid grid-cols-4 auto-rows-[110px] md:auto-rows-[140px] gap-2">
             {/* Resources — 2x2 coral with pulsing glow */}
-            <Tile
-              channel={get("resources")}
-              onClick={openTile}
-              className="col-span-2 row-span-2"
-              icon={Pin}
-              bg="#E8734A"
-              fg="#0D0D0D"
-              glow
-            />
-            <Tile channel={get("ai-news")} onClick={openTile} className="col-span-2 row-span-1" icon={Zap} bg="#1A3A3A" fg="#F5F0EB" />
-            <Tile channel={get("ideas")} onClick={openTile} className="col-span-2 row-span-1" icon={Lightbulb} bg="#2A1F0A" fg="#C9B99A" />
-            <Tile channel={get("vibing")} onClick={openTile} className="col-span-2 row-span-1" icon={Music} bg="#161616" fg="#8A8480" locked />
-            <Tile channel={get("hiring")} onClick={openTile} className="col-span-1 row-span-1" icon={Briefcase} bg="#161616" fg="#8A8480" locked />
-            <Tile channel={get("wins")} onClick={openTile} className="col-span-1 row-span-1" icon={Trophy} bg="#161616" fg="#8A8480" locked />
+            <Tile channel={get("resources")} onClick={openTile} className="col-span-2 row-span-2" />
+            <Tile channel={get("ai-news")}   onClick={openTile} className="col-span-2 row-span-1" />
+            <Tile channel={get("ideas")}     onClick={openTile} className="col-span-2 row-span-1" />
+            <Tile channel={get("vibing")}    onClick={openTile} className="col-span-2 row-span-1" locked />
+            <Tile channel={get("hiring")}    onClick={openTile} className="col-span-1 row-span-1" locked />
+            <Tile channel={get("wins")}      onClick={openTile} className="col-span-1 row-span-1" locked />
           </div>
 
           {/* Join panel */}
           <div className="rounded-2xl p-6 md:p-7 self-start" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
-            {yoloMode ? <YoloPanel /> : <StandardJoinPanel channels={channels} />}
+            {yoloMode ? <YoloPanel /> : <StandardJoinPanel />}
           </div>
         </div>
       </div>
 
-      {/* Video overlay */}
+      {/* Video overlay — first-session only */}
       {showVideo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.92)" }}>
           <div className="w-full max-w-2xl">
@@ -86,7 +107,7 @@ const Index = () => {
               <iframe src={PLACEHOLDER_VIDEO} className="w-full h-full" allowFullScreen title="builders house" />
             </div>
             <div className="mt-5 text-center">
-              <button onClick={() => setShowVideo(false)} className="text-sm hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>
+              <button onClick={dismissVideo} className="text-sm hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>
                 skip for now →
               </button>
             </div>
@@ -112,35 +133,36 @@ const Index = () => {
   );
 };
 
-const Tile = ({ channel, onClick, className = "", icon: Icon, bg, fg, locked, glow }: any) => {
+const Tile = ({ channel, onClick, className = "", locked }: any) => {
   if (!channel) return <div className={`rounded-2xl ${className}`} style={{ background: "#0F0F0F" }} />;
+  const cfg = TILES[channel.slug] ?? { bg: "#161616", fg: "#F5F0EB", icon: Pin };
+  const Icon = cfg.icon;
   return (
     <button
       onClick={() => onClick(channel)}
-      className={`group relative rounded-2xl flex items-center justify-center transition-transform hover:scale-[1.02] active:scale-[0.98] ${className}`}
+      className={`group relative rounded-2xl flex items-center justify-center overflow-hidden transition-transform hover:scale-[1.02] active:scale-[0.98] ${className}`}
       style={{
-        background: bg,
-        border: "1px solid rgba(255,255,255,0.06)",
-        boxShadow: glow ? "0 0 24px rgba(232,115,74,0.5)" : undefined,
-        animation: glow ? "tilePulse 3s ease-in-out infinite" : undefined,
+        background: cfg.bg,
+        boxShadow: cfg.glow ? "0 0 24px rgba(232,115,74,0.5)" : undefined,
+        animation: cfg.glow ? "tilePulse 3s ease-in-out infinite" : undefined,
       }}
     >
-      <Icon style={{ color: fg }} className="h-8 w-8 md:h-10 md:w-10" strokeWidth={1.5} />
+      <Icon style={{ color: cfg.fg }} className="h-10 w-10 md:h-12 md:w-12" strokeWidth={1.75} />
       {locked && (
-        <div className="absolute inset-0 rounded-2xl flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
-          <Lock className="h-6 w-6" style={{ color: "#8A8480" }} strokeWidth={1.5} />
+        <div className="absolute inset-0 rounded-2xl flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <Lock className="h-7 w-7" style={{ color: "#F5F0EB" }} strokeWidth={2} />
         </div>
       )}
-      <style>{`@keyframes tilePulse { 0%,100% { box-shadow: 0 0 24px rgba(232,115,74,0.5); } 50% { box-shadow: 0 0 36px rgba(232,115,74,0.7); } }`}</style>
+      <style>{`@keyframes tilePulse { 0%,100% { box-shadow: 0 0 24px rgba(232,115,74,0.5); } 50% { box-shadow: 0 0 40px rgba(232,115,74,0.8); } }`}</style>
     </button>
   );
 };
 
-const StandardJoinPanel = ({ channels }: { channels: Channel[] }) => {
+const StandardJoinPanel = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [building, setBuilding] = useState("");
-  const [room, setRoom] = useState("resources");
+  const [stage, setStage] = useState<"figuring" | "shipping" | "">("");
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -151,12 +173,11 @@ const StandardJoinPanel = ({ channels }: { channels: Channel[] }) => {
       name: name.trim(),
       email: email.trim().toLowerCase(),
       what_building: building.trim(),
-      room_selected: room,
+      room_selected: stage || null,
       onboard_path: "standard",
     } as any);
     setBusy(false);
     if (error) { toast.error(error.message); return; }
-    // notify admins
     const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
     if (admins?.length) {
       await supabase.from("notifications").insert(admins.map((a) => ({
@@ -188,27 +209,27 @@ const StandardJoinPanel = ({ channels }: { channels: Channel[] }) => {
           rows={4} maxLength={2000}
           className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none"
           style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
-        <div>
-          <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>which room fits you?</p>
-          <div className="grid grid-cols-2 gap-2">
-            {channels.map((c) => (
-              <button key={c.id} onClick={() => setRoom(c.slug)} type="button"
-                className="text-left p-2.5 rounded-lg text-xs transition-colors"
-                style={{
-                  background: room === c.slug ? "#1E1E1E" : "#0D0D0D",
-                  border: room === c.slug ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
-                  color: room === c.slug ? "#E8734A" : "#8A8480",
-                }}>
-                {c.name.toLowerCase()}
-              </button>
-            ))}
-          </div>
+        <div className="grid grid-cols-2 gap-2">
+          <StageOption active={stage === "figuring"} onClick={() => setStage("figuring")} label="still figuring it out" />
+          <StageOption active={stage === "shipping"} onClick={() => setStage("shipping")} label="shipping & making money" />
         </div>
         <Button onClick={submit} disabled={busy} className="w-full">{busy ? "sending…" : "request access"}</Button>
       </div>
     </div>
   );
 };
+
+const StageOption = ({ active, onClick, label }: any) => (
+  <button type="button" onClick={onClick}
+    className="text-left p-2.5 rounded-lg text-xs transition-colors"
+    style={{
+      background: active ? "#1E1E1E" : "#0D0D0D",
+      border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
+      color: active ? "#E8734A" : "#8A8480",
+    }}>
+    {label}
+  </button>
+);
 
 const YoloPanel = () => {
   const nav = useNavigate();
@@ -227,7 +248,6 @@ const YoloPanel = () => {
     setBusy(false);
     if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); return; }
     if (data?.password) {
-      // sign them in directly
       const { error: signErr } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: data.password });
       if (signErr) { toast.error(signErr.message); return; }
       toast.success("you're in.");
