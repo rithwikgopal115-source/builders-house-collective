@@ -1,105 +1,146 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Builders House — Klinity-inspired dark warm palette.
+   All colors HSL. Defined once here, used everywhere via tokens. */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Builders House is dark-first; light-mode tokens mirror dark to avoid mode-switch surprises */
+    --background: 0 0% 5%;              /* #0D0D0D */
+    --foreground: 30 27% 94%;           /* #F5F0EB */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --surface: 0 0% 9%;                 /* #161616 */
+    --surface-elevated: 0 0% 12%;       /* #1E1E1E */
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --card: 0 0% 9%;
+    --card-foreground: 30 27% 94%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 30 27% 94%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --primary: 17 76% 60%;              /* #E8734A salmon */
+    --primary-foreground: 0 0% 5%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --secondary: 38 35% 70%;            /* #C9B99A warm sand */
+    --secondary-foreground: 0 0% 5%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 30 4% 52%;      /* #8A8480 */
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 30 27% 94%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 30 27% 94%;
 
-    --radius: 0.5rem;
+    --border: 0 0% 100% / 0.06;         /* not used directly — see hairline */
+    --border-solid: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 17 76% 60%;
 
-    --sidebar-background: 0 0% 98%;
+    --radius: 1rem;                     /* 16px */
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* Tier badges */
+    --tier-learner-bg: 24 22% 14%;      /* #2A2420 */
+    --tier-learner-fg: 38 35% 70%;      /* #C9B99A */
+    --tier-founder-bg: 24 49% 11%;      /* #2A1A0E */
+    --tier-founder-fg: 17 76% 60%;      /* #E8734A */
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Sidebar (matches surface) */
+    --sidebar-background: 0 0% 5%;
+    --sidebar-foreground: 30 27% 94%;
+    --sidebar-primary: 17 76% 60%;
+    --sidebar-primary-foreground: 0 0% 5%;
+    --sidebar-accent: 0 0% 9%;
+    --sidebar-accent-foreground: 30 27% 94%;
+    --sidebar-border: 0 0% 14%;
+    --sidebar-ring: 17 76% 60%;
 
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Hairline border (rgba semantics emulated via solid HSL fallback) */
+    --hairline: 0 0% 100%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* same as :root — Builders House is single-theme */
+    --background: 0 0% 5%;
+    --foreground: 30 27% 94%;
+    --surface: 0 0% 9%;
+    --surface-elevated: 0 0% 12%;
+    --card: 0 0% 9%;
+    --card-foreground: 30 27% 94%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 30 27% 94%;
+    --primary: 17 76% 60%;
+    --primary-foreground: 0 0% 5%;
+    --secondary: 38 35% 70%;
+    --secondary-foreground: 0 0% 5%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 30 4% 52%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 30 27% 94%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 30 27% 94%;
+    --border-solid: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 17 76% 60%;
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border-solid));
+  }
+
+  html {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  h1, h2, h3, h4 {
+    font-family: 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.02em;
+    font-weight: 500;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Hairline 1px border using rgba white at 6% — more authentic than HSL solid */
+  .hairline {
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .hairline-t { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+  .hairline-b { border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+  .hairline-r { border-right: 1px solid rgba(255, 255, 255, 0.06); }
+
+  /* Scrollbar (subtle) */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--surface-elevated)); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
+}
+
+@layer components {
+  .bento-card {
+    @apply rounded-2xl bg-surface p-6 transition-colors hover:bg-surface-elevated;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .tier-badge-learner {
+    background: hsl(var(--tier-learner-bg));
+    color: hsl(var(--tier-learner-fg));
+  }
+  .tier-badge-founder {
+    background: hsl(var(--tier-founder-bg));
+    color: hsl(var(--tier-founder-fg));
   }
 }
