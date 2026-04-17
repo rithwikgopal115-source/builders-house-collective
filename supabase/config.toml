@@ -1,1 +1,7 @@
 project_id = "qjohpbqnatrwcqxnhgrr"
+
+[functions.approve-access-request]
+verify_jwt = false
+
+[functions.seed-admin]
+verify_jwt = false
