@@ -4,7 +4,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { PostCard, FeedPost } from "@/components/PostCard";
 import { AvatarBlock } from "@/components/AvatarBlock";
-import { TierBadge } from "@/components/TierBadge";
+import { BuilderBadge, AdminTag } from "@/components/TierBadge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -30,8 +30,8 @@ const Profile = () => {
 
       const { data: ps } = await supabase
         .from("posts")
-        .select("id, channel_id, author_id, title, content, post_type, url, looking_for, created_at, channels!inner(slug, name), profiles!inner(display_name, avatar_url, tier)")
-        .eq("author_id", id)
+        .select("id, channel_id, user_id, title, content, type, url, visibility, created_at, is_pinned, channels!inner(slug, name), profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
+        .eq("user_id", id)
         .order("created_at", { ascending: false });
       const all = (ps ?? []).map((x: any) => ({ ...x, channel: x.channels, author: x.profiles }));
       setPosts(all);
@@ -53,19 +53,15 @@ const Profile = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-medium">{profile.display_name}</h1>
-                <TierBadge tier={profile.tier} />
+                <BuilderBadge />
+                {profile.is_admin && <AdminTag />}
               </div>
               {profile.bio && <p className="text-muted-foreground text-sm mt-2">{profile.bio}</p>}
               {links.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {links.map((l) => (
-                    <a
-                      key={l.id}
-                      href={l.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-mono px-2.5 py-1 rounded-full hairline hover:bg-surface-elevated transition-colors flex items-center gap-1.5"
-                    >
+                    <a key={l.id} href={l.url} target="_blank" rel="noreferrer"
+                      className="text-xs font-mono px-2.5 py-1 rounded-full hairline hover:bg-surface-elevated transition-colors flex items-center gap-1.5">
                       {l.label} <ExternalLink className="h-3 w-3" />
                     </a>
                   ))}
