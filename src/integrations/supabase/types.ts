@@ -16,100 +16,114 @@ export type Database = {
     Tables: {
       access_requests: {
         Row: {
-          created_at: string
+          cool_person_response: boolean | null
+          created_at: string | null
           email: string
           id: string
           name: string
-          requested_tier: Database["public"]["Enums"]["member_tier"]
-          reviewed_at: string | null
-          reviewed_by: string | null
-          status: Database["public"]["Enums"]["request_status"]
-          what_building: string
+          onboard_path: string | null
+          room_selected: string | null
+          status: string | null
+          what_building: string | null
         }
         Insert: {
-          created_at?: string
+          cool_person_response?: boolean | null
+          created_at?: string | null
           email: string
           id?: string
           name: string
-          requested_tier: Database["public"]["Enums"]["member_tier"]
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          status?: Database["public"]["Enums"]["request_status"]
-          what_building: string
+          onboard_path?: string | null
+          room_selected?: string | null
+          status?: string | null
+          what_building?: string | null
         }
         Update: {
-          created_at?: string
+          cool_person_response?: boolean | null
+          created_at?: string | null
           email?: string
           id?: string
           name?: string
-          requested_tier?: Database["public"]["Enums"]["member_tier"]
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          status?: Database["public"]["Enums"]["request_status"]
-          what_building?: string
+          onboard_path?: string | null
+          room_selected?: string | null
+          status?: string | null
+          what_building?: string | null
+        }
+        Relationships: []
+      }
+      admin_settings: {
+        Row: {
+          auto_yolo_enabled: boolean | null
+          id: number
+          updated_at: string | null
+        }
+        Insert: {
+          auto_yolo_enabled?: boolean | null
+          id?: number
+          updated_at?: string | null
+        }
+        Update: {
+          auto_yolo_enabled?: boolean | null
+          id?: number
+          updated_at?: string | null
         }
         Relationships: []
       }
       channels: {
         Row: {
-          created_at: string
+          color: string | null
           description: string | null
           icon: string | null
           id: string
+          is_public_visible: boolean | null
           name: string
           slug: string
-          sort_order: number
+          sort_order: number | null
         }
         Insert: {
-          created_at?: string
+          color?: string | null
           description?: string | null
           icon?: string | null
           id?: string
+          is_public_visible?: boolean | null
           name: string
           slug: string
-          sort_order?: number
+          sort_order?: number | null
         }
         Update: {
-          created_at?: string
+          color?: string | null
           description?: string | null
           icon?: string | null
           id?: string
+          is_public_visible?: boolean | null
           name?: string
           slug?: string
-          sort_order?: number
+          sort_order?: number | null
         }
         Relationships: []
       }
       comments: {
         Row: {
-          author_id: string
           content: string
-          created_at: string
+          created_at: string | null
           id: string
           post_id: string
+          user_id: string
         }
         Insert: {
-          author_id: string
           content: string
-          created_at?: string
+          created_at?: string | null
           id?: string
           post_id: string
+          user_id: string
         }
         Update: {
-          author_id?: string
           content?: string
-          created_at?: string
+          created_at?: string | null
           id?: string
           post_id?: string
+          user_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "comments_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "comments_post_id_fkey"
             columns: ["post_id"]
@@ -117,61 +131,135 @@ export type Database = {
             referencedRelation: "posts"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      posts: {
-        Row: {
-          author_id: string
-          channel_id: string
-          content: string
-          created_at: string
-          id: string
-          is_pinned: boolean
-          looking_for: string | null
-          post_type: Database["public"]["Enums"]["post_type"]
-          title: string | null
-          updated_at: string
-          url: string | null
-        }
-        Insert: {
-          author_id: string
-          channel_id: string
-          content: string
-          created_at?: string
-          id?: string
-          is_pinned?: boolean
-          looking_for?: string | null
-          post_type?: Database["public"]["Enums"]["post_type"]
-          title?: string | null
-          updated_at?: string
-          url?: string | null
-        }
-        Update: {
-          author_id?: string
-          channel_id?: string
-          content?: string
-          created_at?: string
-          id?: string
-          is_pinned?: boolean
-          looking_for?: string | null
-          post_type?: Database["public"]["Enums"]["post_type"]
-          title?: string | null
-          updated_at?: string
-          url?: string | null
-        }
-        Relationships: [
           {
-            foreignKeyName: "posts_author_id_fkey"
-            columns: ["author_id"]
+            foreignKeyName: "comments_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      notifications: {
+        Row: {
+          content: string | null
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          recipient_id: string
+          related_id: string | null
+          type: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          recipient_id: string
+          related_id?: string | null
+          type: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          recipient_id?: string
+          related_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_messages: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          request_id: string
+          sender_type: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          request_id: string
+          sender_type: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          request_id?: string
+          sender_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "access_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts: {
+        Row: {
+          channel_id: string
+          content: string | null
+          created_at: string | null
+          id: string
+          is_pinned: boolean | null
+          title: string | null
+          type: string | null
+          url: string | null
+          user_id: string
+          visibility: string | null
+        }
+        Insert: {
+          channel_id: string
+          content?: string | null
+          created_at?: string | null
+          id?: string
+          is_pinned?: boolean | null
+          title?: string | null
+          type?: string | null
+          url?: string | null
+          user_id: string
+          visibility?: string | null
+        }
+        Update: {
+          channel_id?: string
+          content?: string | null
+          created_at?: string | null
+          id?: string
+          is_pinned?: boolean | null
+          title?: string | null
+          type?: string | null
+          url?: string | null
+          user_id?: string
+          visibility?: string | null
+        }
+        Relationships: [
           {
             foreignKeyName: "posts_channel_id_fkey"
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "posts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -201,72 +289,177 @@ export type Database = {
           sort_order?: number
           url?: string
         }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          created_at: string | null
+          display_name: string
+          id: string
+          is_admin: boolean | null
+          is_approved: boolean | null
+          links: Json | null
+          what_building: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string | null
+          display_name: string
+          id: string
+          is_admin?: boolean | null
+          is_approved?: boolean | null
+          links?: Json | null
+          what_building?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string | null
+          display_name?: string
+          id?: string
+          is_admin?: boolean | null
+          is_approved?: boolean | null
+          links?: Json | null
+          what_building?: string | null
+        }
+        Relationships: []
+      }
+      project_updates: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          project_id: string
+          user_id: string
+          visibility: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          project_id: string
+          user_id: string
+          visibility?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          user_id?: string
+          visibility?: string | null
+        }
         Relationships: [
           {
-            foreignKeyName: "profile_links_profile_id_fkey"
-            columns: ["profile_id"]
+            foreignKeyName: "project_updates_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_updates_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
       }
-      profiles: {
+      projects: {
         Row: {
-          avatar_url: string | null
-          bio: string | null
-          created_at: string
-          display_name: string
+          created_at: string | null
+          description: string | null
           id: string
-          is_approved: boolean
-          is_system: boolean
-          tier: Database["public"]["Enums"]["member_tier"]
-          updated_at: string
-          what_building: string | null
+          title: string
+          user_id: string
+          visibility: string | null
         }
         Insert: {
-          avatar_url?: string | null
-          bio?: string | null
-          created_at?: string
-          display_name?: string
-          id: string
-          is_approved?: boolean
-          is_system?: boolean
-          tier?: Database["public"]["Enums"]["member_tier"]
-          updated_at?: string
-          what_building?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          title: string
+          user_id: string
+          visibility?: string | null
         }
         Update: {
-          avatar_url?: string | null
-          bio?: string | null
-          created_at?: string
-          display_name?: string
+          created_at?: string | null
+          description?: string | null
           id?: string
-          is_approved?: boolean
-          is_system?: boolean
-          tier?: Database["public"]["Enums"]["member_tier"]
-          updated_at?: string
-          what_building?: string | null
+          title?: string
+          user_id?: string
+          visibility?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "projects_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      public_visibility_requests: {
+        Row: {
+          created_at: string | null
+          direction: string
+          id: string
+          initiator_id: string
+          post_id: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          direction: string
+          id?: string
+          initiator_id: string
+          post_id: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          direction?: string
+          id?: string
+          initiator_id?: string
+          post_id?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "public_visibility_requests_initiator_id_fkey"
+            columns: ["initiator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "public_visibility_requests_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reactions: {
         Row: {
-          created_at: string
           emoji: string
           id: string
           post_id: string
           user_id: string
         }
         Insert: {
-          created_at?: string
           emoji: string
           id?: string
           post_id: string
           user_id: string
         }
         Update: {
-          created_at?: string
           emoji?: string
           id?: string
           post_id?: string
@@ -278,6 +471,48 @@ export type Database = {
             columns: ["post_id"]
             isOneToOne: false
             referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          status: string | null
+          user_id: string
+          visibility: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          status?: string | null
+          user_id: string
+          visibility?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          status?: string | null
+          user_id?: string
+          visibility?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
