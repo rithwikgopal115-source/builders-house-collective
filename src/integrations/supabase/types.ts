@@ -217,6 +217,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_pinned: boolean | null
+          is_resource: boolean
           title: string | null
           type: string | null
           url: string | null
@@ -229,6 +230,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_pinned?: boolean | null
+          is_resource?: boolean
           title?: string | null
           type?: string | null
           url?: string | null
@@ -241,6 +243,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_pinned?: boolean | null
+          is_resource?: boolean
           title?: string | null
           type?: string | null
           url?: string | null
