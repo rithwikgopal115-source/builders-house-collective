@@ -3,12 +3,9 @@ import { useParams, Navigate, Link } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { PostCard, FeedPost } from "@/components/PostCard";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { PostComposer } from "@/components/PostComposer";
 import { useAuth } from "@/context/AuthContext";
-import { BuilderBadge } from "@/components/TierBadge";
-import { AvatarBlock } from "@/components/AvatarBlock";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { FloatingActions } from "@/components/FloatingActions";
 import { toast } from "sonner";
 
 interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; }
@@ -19,16 +16,12 @@ const ChannelPage = () => {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [topContributors, setTopContributors] = useState<any[]>([]);
+  const [tab, setTab] = useState<"posts" | "resources">("posts");
 
   const isApproved = !!profile?.is_approved;
 
   const load = useCallback(async () => {
     if (!slug) return;
-    // Wait until auth has resolved — RLS on posts requires either a public-visible
-    // channel + public visibility, or an approved auth.uid. Querying mid-bootstrap
-    // returns 0 rows or a 401 depending on token state.
     if (loading) return;
     const { data: ch } = await supabase.from("channels").select("*").eq("slug", slug).maybeSingle();
     if (!ch) { setNotFound(true); return; }
@@ -37,28 +30,13 @@ const ChannelPage = () => {
 
     const { data: ps } = await supabase
       .from("posts")
-      .select("id, channel_id, user_id, title, content, type, url, visibility, created_at, is_pinned, profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
+      .select("id, channel_id, user_id, title, content, type, url, visibility, created_at, is_pinned, is_resource, profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
       .eq("channel_id", ch.id)
       .order("is_pinned", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(80);
     setPosts((ps ?? []).map((p: any) => ({ ...p, author: p.profiles })));
-
-    if (isApproved) {
-      const { data: contribs } = await supabase
-        .from("posts")
-        .select("user_id, profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
-        .eq("channel_id", ch.id)
-        .limit(100);
-      const counts: Record<string, { profile: any; n: number }> = {};
-      (contribs ?? []).forEach((p: any) => {
-        const id = p.user_id;
-        if (!counts[id]) counts[id] = { profile: p.profiles, n: 0 };
-        counts[id].n++;
-      });
-      setTopContributors(Object.values(counts).sort((a, b) => b.n - a.n).slice(0, 5));
-    }
-  }, [slug, isApproved, loading]);
+  }, [slug, loading]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -88,11 +66,9 @@ const ChannelPage = () => {
   if (notFound) return <Navigate to="/home" replace />;
   if (!channel) return <div className="min-h-screen p-10 text-muted-foreground font-mono text-sm">loading…</div>;
 
-  // Public visitor (not logged in / not approved) viewing a public-visible channel: show only public posts, no app shell.
+  // Public visitor on a public-visible channel: minimal shell, public posts only.
   if (!user || !isApproved) {
-    if (!channel.is_public_visible) {
-      return <Navigate to="/" replace />;
-    }
+    if (!channel.is_public_visible) return <Navigate to="/" replace />;
     const publicPosts = posts.filter((p) => p.visibility === "public");
     return (
       <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
@@ -121,62 +97,45 @@ const ChannelPage = () => {
     );
   }
 
+  const visible = posts.filter((p) => tab === "resources" ? !!p.is_resource : true);
+
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto p-6 md:p-10">
-        <header className="mb-8">
-          <h1 className="text-3xl font-medium tracking-tight">{channel.name.toLowerCase()}</h1>
+      <div className="max-w-4xl mx-auto p-6 md:p-10 pb-32">
+        <header className="mb-6">
+          <Link to="/home" className="text-xs font-mono uppercase tracking-wider text-muted-foreground hover:text-primary">← home</Link>
+          <h1 className="text-3xl font-medium tracking-tight mt-3">{channel.name.toLowerCase()}</h1>
           {channel.description && <p className="text-muted-foreground mt-2 text-sm">{channel.description}</p>}
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8">
-          <div className="space-y-4">
-            {posts.length === 0 && (
+        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+          <TabsList className="bg-surface hairline mb-6">
+            <TabsTrigger value="posts">posts</TabsTrigger>
+            <TabsTrigger value="resources">resources</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value={tab} className="space-y-4">
+            {visible.length === 0 && (
               <div className="bento-card text-center py-16 text-sm text-muted-foreground font-mono">
-                nothing here yet. be the first.
+                {tab === "resources" ? "no resources saved yet." : "nothing here yet. be the first."}
               </div>
             )}
-            {posts.map((p) => (
-              <PostCard key={p.id} post={p} onAdminRequestPublic={isAdmin ? requestPublic : undefined} />
+            {visible.map((p) => (
+              <PostCard
+                key={p.id}
+                post={p}
+                onAdminRequestPublic={isAdmin ? requestPublic : undefined}
+              />
             ))}
-          </div>
-
-          <aside className="space-y-4">
-            <div className="bento-card">
-              <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">about</h3>
-              <p className="text-sm">{channel.description ?? "—"}</p>
-            </div>
-            <div className="bento-card">
-              <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">top contributors</h3>
-              <div className="space-y-2">
-                {topContributors.map((c) => (
-                  <div key={c.profile.id} className="flex items-center gap-2">
-                    <AvatarBlock url={c.profile.avatar_url} name={c.profile.display_name} size={28} />
-                    <span className="text-sm flex-1 truncate">{c.profile.display_name}</span>
-                    <BuilderBadge />
-                    <span className="text-xs text-muted-foreground font-mono">{c.n}</span>
-                  </div>
-                ))}
-                {topContributors.length === 0 && <p className="text-xs text-muted-foreground font-mono">none yet</p>}
-              </div>
-            </div>
-          </aside>
-        </div>
-
-        {profile?.is_approved && (
-          <Button onClick={() => setComposerOpen(true)}
-            className="fixed bottom-6 right-6 rounded-full h-14 w-14 p-0 shadow-lg" size="lg">
-            <Plus className="h-6 w-6" />
-          </Button>
-        )}
-
-        <PostComposer
-          open={composerOpen}
-          onOpenChange={setComposerOpen}
-          defaultChannelId={channel.id}
-          onCreated={load}
-        />
+          </TabsContent>
+        </Tabs>
       </div>
+
+      <FloatingActions
+        defaultChannelId={channel.id}
+        defaultIsResource={tab === "resources"}
+        onCreated={load}
+      />
     </AppLayout>
   );
 };

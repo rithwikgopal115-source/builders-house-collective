@@ -4,13 +4,12 @@ import { useAuth } from "@/context/AuthContext";
 import { Navigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { FeedPost } from "@/components/PostCard";
-import { Pin, Zap, Lightbulb, Music, Briefcase, Trophy, ListChecks, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { PostComposer } from "@/components/PostComposer";
+import { Pin, Zap, Lightbulb, Music, Briefcase, Trophy, ListChecks } from "lucide-react";
+import { FloatingActions } from "@/components/FloatingActions";
 
-// Dashboard tiles share landing palette but each is its own card.
-const TILES: Record<string, { bg: string; fg: string; icon: any; badge?: string }> = {
-  "resources": { bg: "#E8734A", fg: "#0D0D0D", icon: Pin, badge: "pinned" },
+// Vivid Windows Phone live tiles. Each channel has its own brand color.
+const TILES: Record<string, { bg: string; fg: string; icon: any; badge?: string; glow?: boolean }> = {
+  "resources": { bg: "#E8734A", fg: "#0D0D0D", icon: Pin, badge: "pinned", glow: true },
   "ai-news":   { bg: "#1D6AE5", fg: "#FFFFFF", icon: Zap },
   "ideas":     { bg: "#F5C518", fg: "#1A1500", icon: Lightbulb },
   "vibing":    { bg: "#7C3AED", fg: "#FFFFFF", icon: Music },
@@ -18,15 +17,22 @@ const TILES: Record<string, { bg: string; fg: string; icon: any; badge?: string 
   "wins":      { bg: "#EA580C", fg: "#FFFFFF", icon: Trophy, badge: "celebration" },
 };
 
+const TITLES: Record<string, string> = {
+  "resources": "critical info & resources",
+  "ai-news": "ai news",
+  "ideas": "ideas",
+  "vibing": "vibing & chilling",
+  "hiring": "hiring / co-founder",
+  "wins": "wins",
+};
+
 const Home = () => {
   const { profile, loading } = useAuth();
   const [postsByChannel, setPostsByChannel] = useState<Record<string, FeedPost[]>>({});
   const [stats, setStats] = useState({ members: 0, postsThisWeek: 0 });
-  const [composerOpen, setComposerOpen] = useState(false);
 
   useEffect(() => {
     document.title = "home — builders house";
-    // Wait for an approved profile before issuing reads — RLS on posts requires it.
     if (!profile?.is_approved) return;
 
     const load = async () => {
@@ -63,16 +69,16 @@ const Home = () => {
 
   return (
     <AppLayout>
-      <div className="p-6 md:p-10 max-w-6xl mx-auto">
-        <header className="mb-8">
+      <div className="px-6 md:px-10 pt-20 pb-32 max-w-6xl mx-auto">
+        <header className="mb-6">
           <h1 className="text-2xl font-medium tracking-tight mb-1">member dashboard</h1>
           <p className="text-xs font-mono text-muted-foreground">
             {stats.members} builders · {stats.postsThisWeek} posts this week
           </p>
         </header>
 
-        {/* Bento — Windows Phone live tiles, tight gaps */}
-        <div className="grid grid-cols-2 md:grid-cols-4 auto-rows-[160px] gap-2">
+        {/* Bento — Windows Phone live tiles, tight 8px gaps */}
+        <div className="grid grid-cols-2 md:grid-cols-4 auto-rows-[150px] md:auto-rows-[170px] gap-2">
           <BentoTile slug="resources" preview={previews.resources} className="col-span-2 row-span-2" big />
           <BentoTile slug="ai-news"   preview={previews["ai-news"]} className="col-span-2 row-span-1" />
           <BentoTile slug="ideas"     preview={previews.ideas}     className="col-span-2 row-span-1" />
@@ -91,14 +97,8 @@ const Home = () => {
         </Link>
       </div>
 
-      {/* floating + composer */}
-      {profile?.is_approved && (
-        <Button onClick={() => setComposerOpen(true)}
-          className="fixed bottom-6 right-6 rounded-full h-14 w-14 p-0 shadow-lg z-30" size="lg">
-          <Plus className="h-6 w-6" />
-        </Button>
-      )}
-      <PostComposer open={composerOpen} onOpenChange={setComposerOpen} />
+      <FloatingActions />
+      <style>{`@keyframes tilePulseHome { 0%,100% { box-shadow: 0 0 24px rgba(232,115,74,0.5); } 50% { box-shadow: 0 0 40px rgba(232,115,74,0.8); } }`}</style>
     </AppLayout>
   );
 };
@@ -107,19 +107,14 @@ const BentoTile = ({ slug, preview, className = "", big }: any) => {
   const cfg = TILES[slug];
   if (!cfg) return null;
   const Icon = cfg.icon;
-  // For colored tiles use the brand color; foreground text mirrors `fg` for legibility.
-  const titleFromSlug: Record<string, string> = {
-    "resources": "critical info & resources",
-    "ai-news": "ai news",
-    "ideas": "ideas",
-    "vibing": "vibing & chilling",
-    "hiring": "hiring / co-founder",
-    "wins": "wins",
-  };
   return (
     <Link to={`/channel/${slug}`}
-      className={`group relative rounded-2xl p-5 flex flex-col justify-between overflow-hidden transition-transform hover:scale-[1.01] active:scale-[0.99] ${className}`}
-      style={{ background: cfg.bg, color: cfg.fg }}>
+      className={`group relative rounded-2xl p-4 md:p-5 flex flex-col justify-between overflow-hidden transition-transform hover:scale-[1.01] active:scale-[0.99] ${className}`}
+      style={{
+        background: cfg.bg,
+        color: cfg.fg,
+        animation: cfg.glow ? "tilePulseHome 3s ease-in-out infinite" : undefined,
+      }}>
       {cfg.badge && (
         <span className="absolute top-3 right-3 text-[10px] font-mono uppercase tracking-wider opacity-70">
           {cfg.badge}
@@ -131,7 +126,7 @@ const BentoTile = ({ slug, preview, className = "", big }: any) => {
       </div>
       <div>
         <h3 className={`font-medium ${big ? "text-xl" : "text-base"} leading-tight`} style={{ color: cfg.fg }}>
-          {titleFromSlug[slug]}
+          {TITLES[slug]}
         </h3>
         {preview ? (
           <p className="text-xs mt-1 line-clamp-2 opacity-80" style={{ color: cfg.fg }}>
