@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { AvatarBlock } from "./AvatarBlock";
 import { BuilderBadge, AdminTag } from "./TierBadge";
-import { MessageCircle, ExternalLink, Globe } from "lucide-react";
+import { MessageCircle, ExternalLink, Globe, Pin } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ export interface FeedPost {
   type: "text" | "link" | "video" | "doc" | string | null;
   url: string | null;
   visibility?: "community" | "public" | "private" | string | null;
+  is_resource?: boolean | null;
   created_at: string;
   is_pinned?: boolean | null;
   author?: {
@@ -31,6 +32,21 @@ export interface FeedPost {
 }
 
 const EMOJIS = ["🔥", "💯", "🧠", "👀", "🙌"];
+
+const ytId = (url: string): string | null => {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1) || null;
+    if (u.hostname.includes("youtube.com")) {
+      if (u.pathname.startsWith("/watch")) return u.searchParams.get("v");
+      if (u.pathname.startsWith("/shorts/")) return u.pathname.split("/")[2] || null;
+      if (u.pathname.startsWith("/embed/")) return u.pathname.split("/")[2] || null;
+    }
+  } catch {}
+  return null;
+};
+
+const isImage = (url: string) => /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url);
 
 export const PostCard = ({
   post,
@@ -94,7 +110,6 @@ export const PostCard = ({
       .from("comments")
       .insert({ post_id: post.id, user_id: user.id, content: newComment.trim() });
     if (error) { toast.error(error.message); return; }
-    // notify post author
     if (post.user_id !== user.id) {
       await supabase.from("notifications").insert({
         recipient_id: post.user_id,
@@ -110,6 +125,8 @@ export const PostCard = ({
 
   const authorName = readOnly ? "builders house" : (post.author?.display_name ?? "member");
   const showAuthor = !readOnly;
+  const yt = post.url && post.type === "video" ? ytId(post.url) : null;
+  const showImage = post.url && isImage(post.url);
 
   return (
     <article className="bento-card animate-fade-in">
@@ -118,7 +135,7 @@ export const PostCard = ({
           <Link to={`/profile/${post.user_id}`} className="flex items-center gap-3 group">
             <AvatarBlock url={post.author?.avatar_url} name={authorName} size={36} />
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium group-hover:text-primary transition-colors">{authorName}</span>
                 <BuilderBadge />
                 {post.author?.is_admin && <AdminTag />}
@@ -143,24 +160,51 @@ export const PostCard = ({
             </div>
           </div>
         )}
-        {post.visibility === "public" && (
-          <span className="ml-auto text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full" style={{ background: "#1A3A2A", color: "#7AC8A0" }}>
-            public
-          </span>
-        )}
-        {post.visibility === "private" && (
-          <span className="ml-auto text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full bg-surface-elevated text-muted-foreground">
-            private
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {post.is_pinned && (
+            <span title="pinned" className="text-primary"><Pin className="h-3.5 w-3.5" /></span>
+          )}
+          {post.visibility === "public" && (
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full" style={{ background: "#1A3A2A", color: "#7AC8A0" }}>
+              public
+            </span>
+          )}
+          {post.visibility === "private" && (
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full bg-surface-elevated text-muted-foreground">
+              private
+            </span>
+          )}
+        </div>
       </div>
 
       {post.title && <h3 className="text-lg font-medium mb-2 leading-snug">{post.title}</h3>}
-      <p className={`text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap ${compact ? "line-clamp-3" : ""}`}>
-        {post.content}
-      </p>
+      {post.content && (
+        <p className={`text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap ${compact ? "line-clamp-3" : ""}`}>
+          {post.content}
+        </p>
+      )}
 
-      {post.url && (
+      {/* YouTube embed */}
+      {yt && (
+        <div className="mt-4 aspect-video rounded-lg overflow-hidden hairline">
+          <iframe
+            src={`https://www.youtube.com/embed/${yt}`}
+            className="w-full h-full"
+            allowFullScreen
+            title={post.title || "video"}
+          />
+        </div>
+      )}
+
+      {/* Image */}
+      {showImage && !yt && (
+        <a href={post.url!} target="_blank" rel="noreferrer" className="block mt-4">
+          <img src={post.url!} alt={post.title || "post image"} className="w-full rounded-lg hairline" loading="lazy" />
+        </a>
+      )}
+
+      {/* Plain link */}
+      {post.url && !yt && !showImage && (
         <a href={post.url} target="_blank" rel="noreferrer"
           className="mt-4 inline-flex items-center gap-2 text-xs font-mono text-secondary hover:text-primary transition-colors">
           <ExternalLink className="h-3 w-3" />
@@ -199,7 +243,7 @@ export const PostCard = ({
             <div key={c.id} className="flex gap-2">
               <AvatarBlock url={c.profiles?.avatar_url} name={c.profiles?.display_name ?? "?"} size={28} />
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                   <span className="text-xs font-medium">{c.profiles?.display_name}</span>
                   <BuilderBadge />
                   {c.profiles?.is_admin && <AdminTag />}
@@ -216,6 +260,7 @@ export const PostCard = ({
                 onChange={(e) => setNewComment(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitComment()}
                 placeholder="add a comment"
+                maxLength={1000}
                 className="flex-1 bg-background hairline rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <Button size="sm" onClick={submitComment}>send</Button>
