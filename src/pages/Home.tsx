@@ -4,12 +4,13 @@ import { useAuth } from "@/context/AuthContext";
 import { Navigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PostCard, FeedPost } from "@/components/PostCard";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ListChecks } from "lucide-react";
 
 const Home = () => {
   const { profile, loading } = useAuth();
   const [postsByChannel, setPostsByChannel] = useState<Record<string, FeedPost[]>>({});
-  const [stats, setStats] = useState({ members: 0, postsThisWeek: 0, channels: 5 });
+  const [stats, setStats] = useState({ members: 0, postsThisWeek: 0, channels: 6 });
+  const [pendingPublicReqs, setPendingPublicReqs] = useState(0);
 
   useEffect(() => {
     document.title = "home — builders house";
@@ -17,129 +18,96 @@ const Home = () => {
     const load = async () => {
       const { data: posts } = await supabase
         .from("posts")
-        .select("id, channel_id, author_id, title, content, post_type, url, looking_for, created_at, channels!inner(slug, name), profiles!inner(display_name, avatar_url, tier)")
+        .select("id, channel_id, user_id, title, content, type, url, visibility, created_at, is_pinned, channels!inner(slug, name), profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
         .order("created_at", { ascending: false })
-        .limit(40);
+        .limit(60);
 
       const map: Record<string, FeedPost[]> = {};
       (posts ?? []).forEach((p: any) => {
-        const slug = p.channels.slug;
+        const slug = p.channels?.slug;
+        if (!slug) return;
         if (!map[slug]) map[slug] = [];
         map[slug].push({ ...p, channel: p.channels, author: p.profiles });
       });
       setPostsByChannel(map);
 
-      const [{ count: members }, { count: weekPosts }] = await Promise.all([
+      const [{ count: members }, { count: weekPosts }, { count: pendReq }] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("is_approved", true),
-        supabase
-          .from("posts")
-          .select("*", { count: "exact", head: true })
+        supabase.from("posts").select("*", { count: "exact", head: true })
           .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()),
+        supabase.from("public_visibility_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
       ]);
-      setStats({ members: members ?? 0, postsThisWeek: weekPosts ?? 0, channels: 5 });
+      setStats({ members: members ?? 0, postsThisWeek: weekPosts ?? 0, channels: 6 });
+      setPendingPublicReqs(pendReq ?? 0);
     };
     load();
   }, []);
 
   if (loading) return null;
-  if (profile && !profile.is_approved) return <Navigate to="/pending" replace />;
+  if (profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
   const resources = postsByChannel["resources"]?.[0];
   const aiNews = postsByChannel["ai-news"]?.[0];
+  const ideas = postsByChannel["ideas"]?.[0];
+  const vibing = postsByChannel["vibing"]?.[0];
   const hiring = postsByChannel["hiring"]?.[0];
-  const vibing = postsByChannel["vibing"]?.slice(0, 3) ?? [];
-  const ideas = postsByChannel["ideas"]?.slice(0, 6) ?? [];
+  const wins = postsByChannel["wins"]?.[0];
 
   return (
     <AppLayout>
       <div className="p-6 md:p-10 max-w-6xl mx-auto">
-        {/* stats */}
-        <div className="flex gap-8 mb-8 text-sm font-mono">
-          <Stat label="members" value={stats.members} />
-          <Stat label="posts this week" value={stats.postsThisWeek} />
-          <Stat label="channels" value={stats.channels} />
+        <header className="mb-8">
+          <h1 className="text-2xl font-medium tracking-tight mb-1">member dashboard</h1>
+          <p className="text-xs font-mono text-muted-foreground">
+            {stats.members} builders · {stats.postsThisWeek} posts this week
+          </p>
+        </header>
+
+        {/* bento — Critical big, then 2x3 grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <BentoCard slug="resources" title="critical info & resources" badge="pinned" icon="📌"
+            color="#E8734A" big preview={resources} className="md:col-span-2 md:row-span-2" />
+          <BentoCard slug="ai-news" title="ai news" icon="⚡" color="#1A3A3A" preview={aiNews} />
+          <BentoCard slug="ideas" title="ideas" icon="💡" color="#2A1F0A" preview={ideas} />
+          <BentoCard slug="vibing" title="vibing & chilling" icon="🎵" preview={vibing} />
+          <BentoCard slug="hiring" title="hiring / co-founder" icon="💼" preview={hiring} />
+          <BentoCard slug="wins" title="wins" badge="celebration" icon="🏆" preview={wins} />
         </div>
 
-        {/* bento */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-min">
-          {/* large: resources */}
-          <BentoSlot
-            title="latest from resources"
-            channelSlug="resources"
-            className="md:col-span-2"
-            empty={!resources}
-          >
-            {resources && <PostCard post={resources} compact />}
-          </BentoSlot>
-
-          {/* medium: ai-news */}
-          <BentoSlot title="ai news" channelSlug="ai-news" empty={!aiNews}>
-            {aiNews && <PostCard post={aiNews} compact />}
-          </BentoSlot>
-
-          {/* medium: hiring */}
-          <BentoSlot title="hiring" channelSlug="hiring" empty={!hiring}>
-            {hiring && <PostCard post={hiring} compact />}
-          </BentoSlot>
-
-          {/* small: vibing */}
-          <BentoSlot title="vibing" channelSlug="vibing" className="md:col-span-2" empty={vibing.length === 0}>
-            <div className="space-y-3">
-              {vibing.map((p) => (
-                <PostCard key={p.id} post={p} compact />
-              ))}
-            </div>
-          </BentoSlot>
-
-          {/* wide: ideas */}
-          <BentoSlot title="ideas" channelSlug="ideas" className="md:col-span-3" empty={ideas.length === 0}>
-            <div className="flex gap-4 overflow-x-auto pb-2 -mx-2 px-2">
-              {ideas.map((p) => (
-                <div key={p.id} className="min-w-[280px] max-w-[320px]">
-                  <PostCard post={p} compact />
-                </div>
-              ))}
-            </div>
-          </BentoSlot>
-        </div>
+        {/* tasks shortcut */}
+        <Link to="/tasks" className="mt-6 bento-card flex items-center gap-3 hover:bg-surface-elevated transition-colors">
+          <ListChecks className="h-5 w-5 text-primary" />
+          <div className="flex-1">
+            <div className="text-sm font-medium">community tasks</div>
+            <div className="text-xs text-muted-foreground font-mono">things people are working on</div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
       </div>
     </AppLayout>
   );
 };
 
-const Stat = ({ label, value }: { label: string; value: number }) => (
-  <div>
-    <div className="text-2xl font-medium">{value}</div>
-    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-  </div>
-);
-
-const BentoSlot = ({
-  title,
-  channelSlug,
-  children,
-  className = "",
-  empty = false,
-}: {
-  title: string;
-  channelSlug: string;
-  children?: React.ReactNode;
-  className?: string;
-  empty?: boolean;
-}) => (
-  <section className={className}>
-    <div className="flex items-center justify-between mb-3 px-1">
-      <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">{title}</h2>
-      <Link to={`/channel/${channelSlug}`} className="text-xs font-mono text-muted-foreground hover:text-primary flex items-center gap-1">
-        view all <ArrowRight className="h-3 w-3" />
-      </Link>
-    </div>
-    {empty ? (
-      <div className="bento-card text-center py-10 text-sm text-muted-foreground font-mono">nothing yet</div>
-    ) : (
-      children
+const BentoCard = ({ slug, title, badge, icon, color, big, preview, className = "" }: any) => (
+  <Link to={`/channel/${slug}`}
+    className={`bento-card group flex flex-col relative overflow-hidden ${className}`}
+    style={{ minHeight: big ? 240 : 160 }}>
+    {badge && (
+      <span className="absolute top-4 right-4 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+        {badge}
+      </span>
     )}
-  </section>
+    <div className="h-10 w-10 rounded-lg flex items-center justify-center text-xl mb-4"
+      style={{ background: color ? `${color}40` : "#1E1E1E" }}>
+      {icon}
+    </div>
+    <h3 className={`font-medium mb-1 ${big ? "text-xl" : "text-base"}`}>{title}</h3>
+    {preview ? (
+      <p className="text-sm text-muted-foreground line-clamp-3 mt-1">{preview.title || preview.content}</p>
+    ) : (
+      <p className="text-xs text-muted-foreground font-mono mt-1">no posts yet</p>
+    )}
+  </Link>
 );
 
 export default Home;

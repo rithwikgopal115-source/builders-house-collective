@@ -13,7 +13,7 @@ const Login = () => {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
   if (user && profile?.is_approved) return <Navigate to="/home" replace />;
-  if (user && profile && !profile.is_approved) return <Navigate to="/pending" replace />;
+  if (user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
   const submit = async () => {
     setBusy(true);
@@ -24,39 +24,30 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-sm">
-        <Link to="/" className="flex items-center gap-2 mb-10 justify-center">
-          <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">b</span>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#0D0D0D" }}>
+      <div className="w-full max-w-md rounded-2xl p-8" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <h1 className="text-3xl font-medium mb-8" style={{ color: "#F5F0EB" }}>builders house.</h1>
+        <div className="space-y-4">
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wider block mb-1.5" style={{ color: "#8A8480" }}>email address</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" type="email"
+              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
           </div>
-          <span className="font-medium">builders house</span>
-        </Link>
-        <div className="bento-card">
-          <h1 className="text-xl font-medium mb-6">members log in</h1>
-          <div className="space-y-3">
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="email"
-              type="email"
-              className="w-full bg-background hairline rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="password"
-              type="password"
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wider block mb-1.5" style={{ color: "#8A8480" }}>password</label>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password"
               onKeyDown={(e) => e.key === "Enter" && submit()}
-              className="w-full bg-background hairline rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <Button className="w-full" onClick={submit} disabled={busy}>
-              {busy ? "…" : "log in"}
-            </Button>
+              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
           </div>
-          <p className="text-xs text-muted-foreground mt-6 font-mono text-center">
-            no account? <Link to="/" className="text-foreground hover:text-primary">request access</Link>
-          </p>
+          <Button className="w-full mt-3" onClick={submit} disabled={busy}>
+            {busy ? "…" : "log in →"}
+          </Button>
+        </div>
+        <div className="mt-7 space-y-2 text-sm" style={{ color: "#8A8480" }}>
+          <p>don't have access? <Link to="/" className="underline hover:text-primary">request it.</Link></p>
+          <p>waiting on approval? <Link to="/waiting" className="underline hover:text-primary">check your status.</Link></p>
         </div>
       </div>
     </div>

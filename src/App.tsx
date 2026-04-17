@@ -6,12 +6,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/context/AuthContext";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
-import Pending from "./pages/Pending";
+import Waiting from "./pages/Waiting";
 import Home from "./pages/Home";
 import Channel from "./pages/Channel";
 import Profile from "./pages/Profile";
 import ProfileEdit from "./pages/ProfileEdit";
 import Admin from "./pages/Admin";
+import Tasks from "./pages/Tasks";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,12 +27,14 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/pending" element={<Pending />} />
+            <Route path="/waiting" element={<Waiting />} />
+            <Route path="/pending" element={<Waiting />} />
             <Route path="/home" element={<Home />} />
             <Route path="/channel/:slug" element={<Channel />} />
             <Route path="/profile/edit" element={<ProfileEdit />} />
             <Route path="/profile/:id" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/tasks" element={<Tasks />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
