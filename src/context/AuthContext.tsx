@@ -33,64 +33,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async (uid: string): Promise<void> => {
-    const [{ data: p }, { data: r }] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
-        .eq("id", uid)
-        .maybeSingle(),
-      supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", uid)
-        .eq("role", "admin")
-        .maybeSingle(),
-    ]);
-    setProfile((p as ProfileLite) ?? null);
-    setIsAdmin(!!r || !!p?.is_admin);
+    const { data: p } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
+      .eq("id", uid)
+      .maybeSingle();
+
+    const { data: r } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", uid)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (p) {
+      setProfile(p as ProfileLite);
+      setIsAdmin(!!r || !!p.is_admin);
+    } else {
+      // No profile row — treat as unapproved visitor, do not hang
+      setProfile(null);
+      setIsAdmin(false);
+    }
   };
 
   useEffect(() => {
     let initialized = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    const clearProfileTimeout = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    };
-
-    const startProfileTimeout = (uid: string) => {
-      clearProfileTimeout();
-      timeoutId = setTimeout(async () => {
-        const { data: p } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("id", uid)
-          .maybeSingle();
-        if (!p) {
-          await supabase.auth.signOut();
-          try {
-            sessionStorage.setItem("auth_error", "profile not found, contact admin.");
-          } catch (_) { /* ignore */ }
-          if (typeof window !== "undefined") {
-            window.location.href = "/login";
-          }
-        }
-      }, 5000);
-    };
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
       setSession(sess);
       setUser(sess?.user ?? null);
 
       if (sess?.user) {
-        startProfileTimeout(sess.user.id);
         await loadProfile(sess.user.id);
-        clearProfileTimeout();
       } else {
-        clearProfileTimeout();
         setProfile(null);
         setIsAdmin(false);
       }
@@ -110,7 +85,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => {
-      clearProfileTimeout();
       sub.subscription.unsubscribe();
     };
   }, []);
