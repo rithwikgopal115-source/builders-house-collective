@@ -21,7 +21,7 @@ const Login = () => {
   }, []);
 
 if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
-if (!loading && user && !profile) return <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#8A8480" }}>loading…</div>;
+if (!loading && user && !profile) return <Navigate to="/waiting" replace />;
 if (user && profile?.is_approved) return <Navigate to="/home" replace />;
 if (user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 

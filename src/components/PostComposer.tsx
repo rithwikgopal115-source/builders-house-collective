@@ -109,48 +109,53 @@ export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsRe
     if (!content.trim() && !title.trim() && !url.trim() && !imageUrl) { toast.error("write something"); return; }
     if (!channelId) { toast.error("pick a channel"); return; }
     setBusy(true);
-
-    const isMemberRequestingPublic = visibility === "public" && !isAdmin;
-    const insertVisibility = isMemberRequestingPublic ? "community" : visibility;
-    const finalUrl = url.trim() || imageUrl || null;
-
-    const { data: created, error } = await supabase.from("posts").insert({
-      channel_id: channelId,
-      user_id: user.id,
-      title: title.trim() || null,
-      content: content.trim(),
-      type: dbType(type),
-      url: finalUrl,
-      visibility: insertVisibility,
-      is_resource: isResource,
-    }).select("id").maybeSingle();
-
-    if (error) { setBusy(false); toast.error(error.message); return; }
-
-    if (isMemberRequestingPublic && created) {
-      await supabase.from("public_visibility_requests").insert({
-        post_id: created.id,
-        initiator_id: user.id,
-        direction: "member_to_admin",
-      });
-      const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
-      if (admins?.length) {
-        await supabase.from("notifications").insert(admins.map((a) => ({
-          recipient_id: a.id,
-          type: "public_request",
-          related_id: created.id,
-          content: `${profile.display_name} wants to make a post public`,
-        })));
+    try {
+  
+      const isMemberRequestingPublic = visibility === "public" && !isAdmin;
+      const insertVisibility = isMemberRequestingPublic ? "community" : visibility;
+      const finalUrl = url.trim() || imageUrl || null;
+  
+      const { data: created, error } = await supabase.from("posts").insert({
+        channel_id: channelId,
+        user_id: user.id,
+        title: title.trim() || null,
+        content: content.trim(),
+        type: dbType(type),
+        url: finalUrl,
+        visibility: insertVisibility,
+        is_resource: isResource,
+      }).select("id").maybeSingle();
+  
+      if (error) { toast.error(error.message); return; }
+  
+      if (isMemberRequestingPublic && created) {
+        await supabase.from("public_visibility_requests").insert({
+          post_id: created.id,
+          initiator_id: user.id,
+          direction: "member_to_admin",
+        });
+        const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
+        if (admins?.length) {
+          await supabase.from("notifications").insert(admins.map((a) => ({
+            recipient_id: a.id,
+            type: "public_request",
+            related_id: created.id,
+            content: `${profile.display_name} wants to make a post public`,
+          })));
+        }
+        toast.success("posted · public request sent to admin");
+      } else {
+        toast.success("posted");
       }
-      toast.success("posted · public request sent to admin");
-    } else {
-      toast.success("posted");
-    }
-
-    setBusy(false);
-    reset();
-    onOpenChange(false);
+  
+      reset();
+      onOpenChange(false);
     onCreated?.();
+    } catch (e: any) {
+      toast.error(e?.message ?? "something went wrong");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
