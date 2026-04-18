@@ -26,7 +26,11 @@ interface ChannelIds { [slug: string]: string }
 const Index = () => {
   const nav = useNavigate();
   const { user, profile, loading } = useAuth();
-  const [showVideo, setShowVideo] = useState(true);
+  const [showVideo, setShowVideo] = useState(() => !sessionStorage.getItem("bh-video-seen"));
+  const dismissVideo = () => {
+    sessionStorage.setItem("bh-video-seen", "1");
+    setShowVideo(false);
+  };
   const [channelIds, setChannelIds] = useState<ChannelIds>({});
   const [yoloMode, setYoloMode] = useState(false);
   const [lockedModal, setLockedModal] = useState<string | null>(null);
