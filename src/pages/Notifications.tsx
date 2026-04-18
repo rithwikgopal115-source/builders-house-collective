@@ -35,9 +35,11 @@ const Notifications = () => {
   }, [user]);
 
   const load = async () => {
+    if (!user) return;
     const { data } = await supabase
       .from("notifications")
       .select("*")
+      .eq("recipient_id", user.id)
       .order("created_at", { ascending: false })
       .limit(80);
     setItems((data ?? []) as Notif[]);
@@ -148,7 +150,4 @@ function timeAgo(iso: string | null) {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
-export default Notifications;
+  return new Date(is

@@ -180,11 +180,15 @@ const Admin = () => {
                     </div>
                   </div>
                   {r.status === "pending" && (
-                    <div className="flex gap-1.5 flex-wrap">
-                      <PillBtn variant="ghost" icon={MessageSquare} onClick={() => setDmRequest(r)}>dm first</PillBtn>
-                      <PillBtn variant="primary" icon={Zap} onClick={() => yoloOnboard(r)}>yolo onboard</PillBtn>
-                      <PillBtn variant="ghost" onClick={() => reject(r)}>reject</PillBtn>
-                    </div>
+                    r.email === user?.email ? (
+                      <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#1E1E1E", color: "#8A8480", borderRadius: 999 }}>your own request</span>
+                    ) : (
+                      <div className="flex gap-1.5 flex-wrap">
+                        <PillBtn variant="ghost" icon={MessageSquare} onClick={() => setDmRequest(r)}>dm first</PillBtn>
+                        <PillBtn variant="primary" icon={Zap} onClick={() => yoloOnboard(r)}>yolo onboard</PillBtn>
+                        <PillBtn variant="ghost" onClick={() => reject(r)}>reject</PillBtn>
+                      </div>
+                    )
                   )}
                 </div>
               ))}
@@ -351,14 +355,4 @@ const ChannelAdminRow = ({ channel }: { channel: any }) => {
           <div key={p.id} className="flex items-center gap-2 text-sm">
             <span className="flex-1 truncate" style={{ color: "#F5F0EB" }}>{p.title || p.content?.slice(0, 60)}</span>
             <span className="text-[10px] font-mono uppercase" style={{ color: "#8A8480" }}>{p.visibility}</span>
-            <PillBtn variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>{p.is_pinned ? "unpin" : "pin"}</PillBtn>
-            <PillBtn variant="ghost" onClick={() => remove(p.id)}>×</PillBtn>
-          </div>
-        ))}
-        {recent.length === 0 && <p className="text-xs font-mono" style={{ color: "#8A8480" }}>no posts</p>}
-      </div>
-    </div>
-  );
-};
-
-export default Admin;
+            <PillBtn variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>{p.is_pinned 

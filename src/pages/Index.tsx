@@ -37,7 +37,7 @@ const Index = () => {
       .then(({ data }) => setYoloMode(!!data?.auto_yolo_enabled));
   }, []);
 
-if (!loading && user && !profile) return <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#8A8480" }}>loading…</div>;
+if (!loading && user && !profile) return <Navigate to="/waiting" replace />;
 if (!loading && user && profile?.is_approved) return <Navigate to="/home" replace />;
 if (!loading && user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
@@ -290,3 +290,4 @@ const PanelInput = ({ value, onChange, placeholder, type = "text" }: any) => (
 );
 
 export default Index;
+                                                                                                                   

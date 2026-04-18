@@ -70,10 +70,21 @@ const loadProfile = async (uid: string): Promise<void> => {
     }
   }
 });
-    // Fallback: if there is no session and onAuthStateChange hasn't fired, unblock loading
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!s && !initialized) {
-        initialized = true;
+    // Fallback: if onAuthStateChange hasn't fired yet, getSession initializes fully.
+    // Whichever resolves first wins via the `initialized` flag.
+    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+      if (initialized) return; // onAuthStateChange already handled it
+      initialized = true;
+      try {
+        setSession(s);
+        setUser(s?.user ?? null);
+        if (s?.user) {
+          await loadProfile(s.user.id);
+        } else {
+          setProfile(null);
+          setIsAdmin(false);
+        }
+      } finally {
         setLoading(false);
       }
     });
@@ -96,15 +107,4 @@ const loadProfile = async (uid: string): Promise<void> => {
     if (user) await loadProfile(user.id);
   };
 
-  return (
-    <AuthContext.Provider value={{ user, session, profile, isAdmin, loading, signIn, signOut, refreshProfile }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
-  return ctx;
-};
+  

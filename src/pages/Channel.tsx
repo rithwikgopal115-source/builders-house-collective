@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, Navigate, Link } from "react-router-dom";
+import { useParams, Navigate, Link, useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { PostCard, FeedPost } from "@/components/PostCard";
@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FloatingActions } from "@/components/FloatingActions";
 import { toast } from "sonner";
-import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, Send } from "lucide-react";
+import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, Send, ArrowLeft } from "lucide-react";
 
 interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; }
 
@@ -120,15 +120,25 @@ const ChannelPage = () => {
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
-        <header className="mb-6 flex items-center gap-4">
-          <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
-            <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-medium tracking-tight truncate" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
-              {channel.name.toLowerCase()}
-            </h1>
-            {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#8A8480" }}>{channel.description}</p>}
+        <header className="mb-6">
+          <Link
+            to="/home"
+            className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 transition-colors hover:text-primary"
+            style={{ color: "#8A8480" }}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            home
+          </Link>
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
+              <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl md:text-3xl font-medium tracking-tight truncate" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
+                {channel.name.toLowerCase()}
+              </h1>
+              {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#8A8480" }}>{channel.description}</p>}
+            </div>
           </div>
         </header>
 
@@ -272,19 +282,4 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="say something…"
             className="flex-1 px-3 py-2 text-sm focus:outline-none"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-          />
-          <button
-            onClick={send}
-            className="h-9 w-9 flex items-center justify-center transition-opacity hover:opacity-90"
-            style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8 }}
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-    </aside>
-  );
-};
-
-export default ChannelPage;
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", 
