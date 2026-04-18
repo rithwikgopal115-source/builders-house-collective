@@ -32,29 +32,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const loadProfile = async (uid: string): Promise<void> => {
-    const { data: p } = await supabase
-      .from("profiles")
-      .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
-      .eq("id", uid)
-      .maybeSingle();
-
-    const { data: r } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", uid)
-      .eq("role", "admin")
-      .maybeSingle();
-
-    if (p) {
-      setProfile(p as ProfileLite);
-      setIsAdmin(!!r || !!p.is_admin);
-    } else {
-      // No profile row — treat as unapproved visitor, do not hang
-      setProfile(null);
-      setIsAdmin(false);
-    }
-  };
+ const loadProfile = async (uid: string): Promise<void> => {
+  const { data: p } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
+    .eq("id", uid)
+    .maybeSingle();
+  if (p) {
+    setProfile(p as ProfileLite);
+    setIsAdmin(!!p.is_admin);
+  } else {
+    setProfile(null);
+    setIsAdmin(false);
+  }
+};
 
   useEffect(() => {
     let initialized = false;
