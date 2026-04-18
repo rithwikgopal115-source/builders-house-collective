@@ -35,7 +35,7 @@ const Notifications = () => {
   }, [user]);
 
   const load = async () => {
-    if (\!user) return;
+    if (!user) return;
     const { data } = await supabase
       .from("notifications")
       .select("*")
