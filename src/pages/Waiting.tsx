@@ -4,11 +4,22 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
-import { Navigate } from "react-router-dom";
+import { Send, ArrowLeft } from "lucide-react";
+import { Navigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 
 interface Msg { id: string; sender_type: string; content: string; created_at: string | null; }
+
+const BackLink = () => (
+  <Link
+    to="/"
+    className="fixed top-5 left-5 md:top-6 md:left-6 z-30 inline-flex items-center gap-1.5 text-xs font-mono transition-colors hover:text-primary"
+    style={{ color: "#8A8480" }}
+  >
+    <ArrowLeft className="h-3.5 w-3.5" />
+    back
+  </Link>
+);
 
 const Waiting = () => {
   const { user, profile, loading, signOut } = useAuth();
@@ -20,12 +31,10 @@ const Waiting = () => {
   const [checking, setChecking] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // If already logged in & approved, kick them home
   useEffect(() => {
     document.title = "waiting room — builders house";
   }, []);
 
-  // If logged in, use their auth email automatically
   useEffect(() => {
     if (user?.email) setStatusEmail(user.email);
   }, [user]);
@@ -44,7 +53,6 @@ const Waiting = () => {
     if (statusEmail) lookup(statusEmail);
   }, [statusEmail]);
 
-  // realtime new messages
   useEffect(() => {
     if (!request) return;
     const ch = supabase.channel(`onboarding:${request.id}`)
@@ -63,7 +71,6 @@ const Waiting = () => {
     });
     if (error) { toast.error(error.message); return; }
     setDraft("");
-    // notify admins
     const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
     if (admins?.length) {
       await supabase.from("notifications").insert(admins.map((a) => ({
@@ -76,28 +83,34 @@ const Waiting = () => {
   if (loading) return null;
   if (user && profile?.is_approved) return <Navigate to="/home" replace />;
 
-  // No email yet: ask
   if (!statusEmail) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#0D0D0D" }}>
-        <div className="w-full max-w-md rounded-2xl p-8" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <h1 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB" }}>waiting room</h1>
+      <div className="min-h-screen flex items-center justify-center p-6 relative" style={{ background: "#0D0D0D" }}>
+        <BackLink />
+        <div className="w-full max-w-md p-8" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
+          <h1 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>waiting room</h1>
           <p className="text-sm mb-6" style={{ color: "#8A8480" }}>enter the email you applied with.</p>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email" type="email"
             onKeyDown={(e) => e.key === "Enter" && setStatusEmail(email.trim())}
-            className="w-full rounded-lg px-3 py-2.5 text-sm mb-3"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
+            className="w-full px-3 py-2.5 text-sm mb-3"
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           <Button onClick={() => setStatusEmail(email.trim())} className="w-full">check status</Button>
         </div>
       </div>
     );
   }
 
-  if (checking) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
+  if (checking) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm relative" style={{ background: "#0D0D0D" }}>
+      <BackLink />
+      loading…
+    </div>
+  );
 
   if (!request) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#0D0D0D" }}>
+      <div className="min-h-screen flex items-center justify-center p-6 relative" style={{ background: "#0D0D0D" }}>
+        <BackLink />
         <div className="text-center">
           <p className="text-sm mb-3" style={{ color: "#8A8480" }}>no application found.</p>
           <Button variant="ghost" onClick={() => { setStatusEmail(null); setEmail(""); }}>try another email</Button>
@@ -107,12 +120,13 @@ const Waiting = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#0D0D0D" }}>
-      <div className="w-full max-w-2xl rounded-2xl overflow-hidden" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <div className="p-6 hairline-b">
+    <div className="min-h-screen flex items-center justify-center p-6 relative" style={{ background: "#0D0D0D" }}>
+      <BackLink />
+      <div className="w-full max-w-2xl overflow-hidden" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
+        <div className="p-6" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full" style={{ background: request.status === "approved" ? "#7AC8A0" : request.status === "rejected" ? "#E87474" : "#C9B99A" }} />
-            <h1 className="text-lg font-medium" style={{ color: "#F5F0EB" }}>
+            <h1 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
               {request.status === "approved" ? "you're in. log in to continue." :
                request.status === "rejected" ? "your application was declined." :
                "your request is being reviewed."}
@@ -131,10 +145,11 @@ const Waiting = () => {
                 {m.sender_type !== "requester" && (
                   <div className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#E8734A" }}>admin</div>
                 )}
-                <div className="px-3 py-2 rounded-lg text-sm"
+                <div className="px-3 py-2 text-sm"
                   style={{
                     background: m.sender_type === "requester" ? "#1E1E1E" : "#1A1A1A",
                     color: "#F5F0EB",
+                    borderRadius: 8,
                   }}>
                   {m.content}
                 </div>
@@ -145,16 +160,16 @@ const Waiting = () => {
         </div>
 
         {request.status === "pending" && (
-          <div className="p-4 hairline-t flex gap-2" style={{ background: "#161616" }}>
+          <div className="p-4 flex gap-2" style={{ background: "#161616", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="say something…"
               onKeyDown={(e) => e.key === "Enter" && send()}
-              className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
-              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
+              className="flex-1 px-3 py-2 text-sm focus:outline-none"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
             <Button size="icon" onClick={send}><Send className="h-4 w-4" /></Button>
           </div>
         )}
 
-        <div className="p-4 hairline-t text-center">
+        <div className="p-4 text-center" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <button onClick={user ? signOut : () => { setStatusEmail(null); setEmail(""); }}
             className="text-xs font-mono" style={{ color: "#8A8480" }}>
             {user ? "sign out" : "use a different email"}

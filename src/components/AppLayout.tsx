@@ -6,9 +6,8 @@ import { AvatarBlock } from "./AvatarBlock";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Global shell — no sidebar. Bottom-left stack of floating icons:
- *   avatar (→ /profile/:id), shield (admin only → /admin), logout.
- * Top-right: notification bell with unread dot (→ /notifications).
+ * Global shell — single top bar holds the wordmark left and all chrome right
+ * (bell with unread dot, profile avatar, admin shield, logout).
  *
  * Pages with their own custom shell (landing, login, waiting) should NOT
  * wrap themselves in <AppLayout/> — only logged-in app pages do.
@@ -44,47 +43,65 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   if (!user) return <Navigate to="/login" replace />;
 
   return (
-    <div className="min-h-screen bg-background relative">
-      {/* Top-right notification bell */}
-      <Link
-        to="/notifications"
-        aria-label="notifications"
-        className="fixed top-5 right-5 md:top-6 md:right-6 z-30 h-10 w-10 rounded-full flex items-center justify-center hairline bg-surface hover:bg-surface-elevated transition-colors"
+    <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
+      {/* Top bar — wordmark left, all chrome right */}
+      <header
+        className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-5 md:px-8 h-14"
+        style={{ background: "#0D0D0D", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
       >
-        <Bell className="h-4 w-4 text-foreground" />
-        {unread > 0 && (
-          <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
-        )}
-      </Link>
-
-      <main className="min-w-0">{children}</main>
-
-      {/* Bottom-left floating stack */}
-      <div className="fixed bottom-5 left-5 md:bottom-6 md:left-6 z-30 flex flex-col gap-2">
         <Link
-          to={`/profile/${user.id}`}
-          aria-label="my profile"
-          className="h-10 w-10 rounded-full overflow-hidden hairline hover:ring-2 hover:ring-primary/50 transition"
+          to="/home"
+          className="text-sm font-medium tracking-tight transition-colors"
+          style={{ color: "#F5F0EB" }}
         >
-          <AvatarBlock url={profile?.avatar_url} name={profile?.display_name ?? "?"} size={40} />
+          builders house.
         </Link>
-        {isAdmin && (
+
+        <div className="flex items-center gap-1.5">
           <Link
-            to="/admin"
-            aria-label="admin"
-            className="h-10 w-10 rounded-full flex items-center justify-center hairline bg-surface hover:bg-surface-elevated transition-colors"
+            to="/notifications"
+            aria-label="notifications"
+            className="relative h-9 w-9 flex items-center justify-center rounded-md transition-colors hover:bg-white/5"
           >
-            <Shield className="h-4 w-4 text-primary" />
+            <Bell className="h-4 w-4" style={{ color: "#8A8480" }} />
+            {unread > 0 && (
+              <span
+                className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full"
+                style={{ background: "#E8734A" }}
+              />
+            )}
           </Link>
-        )}
-        <button
-          onClick={signOut}
-          aria-label="log out"
-          className="h-10 w-10 rounded-full flex items-center justify-center hairline bg-surface hover:bg-surface-elevated transition-colors"
-        >
-          <LogOut className="h-4 w-4 text-muted-foreground" />
-        </button>
-      </div>
+
+          <Link
+            to={`/profile/${user.id}`}
+            aria-label="my profile"
+            className="h-8 w-8 rounded-full overflow-hidden transition-opacity hover:opacity-80"
+            style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            <AvatarBlock url={profile?.avatar_url} name={profile?.display_name ?? "?"} size={32} />
+          </Link>
+
+          {isAdmin && (
+            <Link
+              to="/admin"
+              aria-label="admin"
+              className="h-9 w-9 flex items-center justify-center rounded-md transition-colors hover:bg-white/5"
+            >
+              <Shield className="h-4 w-4" style={{ color: "#E8734A" }} />
+            </Link>
+          )}
+
+          <button
+            onClick={signOut}
+            aria-label="log out"
+            className="h-9 w-9 flex items-center justify-center rounded-md transition-colors hover:bg-white/5"
+          >
+            <LogOut className="h-4 w-4" style={{ color: "#8A8480" }} />
+          </button>
+        </div>
+      </header>
+
+      <main className="min-w-0 pt-14">{children}</main>
     </div>
   );
 };

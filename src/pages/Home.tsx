@@ -4,31 +4,23 @@ import { useAuth } from "@/context/AuthContext";
 import { Navigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { FeedPost } from "@/components/PostCard";
-import { Pin, Zap, Lightbulb, Music, Briefcase, Trophy, ListChecks } from "lucide-react";
+import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, ListChecks } from "lucide-react";
 import { FloatingActions } from "@/components/FloatingActions";
 
-// Vivid Windows Phone live tiles. Each channel has its own brand color.
-const TILES: Record<string, { bg: string; fg: string; icon: any; badge?: string; glow?: boolean }> = {
-  "resources": { bg: "#E8734A", fg: "#0D0D0D", icon: Pin, badge: "pinned", glow: true },
-  "ai-news":   { bg: "#1D6AE5", fg: "#FFFFFF", icon: Zap },
-  "ideas":     { bg: "#F5C518", fg: "#1A1500", icon: Lightbulb },
-  "vibing":    { bg: "#7C3AED", fg: "#FFFFFF", icon: Music },
-  "hiring":    { bg: "#16A34A", fg: "#FFFFFF", icon: Briefcase },
-  "wins":      { bg: "#EA580C", fg: "#FFFFFF", icon: Trophy, badge: "celebration" },
-};
-
-const TITLES: Record<string, string> = {
-  "resources": "critical info & resources",
-  "ai-news": "ai news",
-  "ideas": "ideas",
-  "vibing": "vibing & chilling",
-  "hiring": "hiring / co-founder",
-  "wins": "wins",
+// Sharp Windows-Phone live tiles. Each channel has its own brand color + icon.
+const TILES: Record<string, { bg: string; fg: string; icon: any; label: string; badge?: string; glow?: boolean }> = {
+  "resources": { bg: "#E8734A", fg: "#0D0D0D", icon: Star,       label: "critical info", badge: "pinned", glow: true },
+  "ai-news":   { bg: "#1D6AE5", fg: "#FFFFFF", icon: Zap,         label: "ai news" },
+  "ideas":     { bg: "#F5C518", fg: "#1A1500", icon: Lightbulb,   label: "ideas" },
+  "vibing":    { bg: "#7C3AED", fg: "#FFFFFF", icon: Music,       label: "vibing" },
+  "hiring":    { bg: "#16A34A", fg: "#FFFFFF", icon: Briefcase,   label: "hiring" },
+  "wins":      { bg: "#EA580C", fg: "#FFFFFF", icon: Trophy,      label: "wins", badge: "celebration" },
 };
 
 const Home = () => {
-  const { profile, loading } = useAuth();
+  const { profile, user, loading } = useAuth();
   const [postsByChannel, setPostsByChannel] = useState<Record<string, FeedPost[]>>({});
+  const [unreadByChannel, setUnreadByChannel] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState({ members: 0, postsThisWeek: 0 });
 
   useEffect(() => {
@@ -51,6 +43,14 @@ const Home = () => {
       });
       setPostsByChannel(map);
 
+      // Unread heuristic: any post in last 24h not authored by me
+      const cutoff = Date.now() - 86400000;
+      const unread: Record<string, boolean> = {};
+      Object.entries(map).forEach(([slug, list]) => {
+        unread[slug] = list.some(p => new Date(p.created_at).getTime() > cutoff && p.user_id !== user?.id);
+      });
+      setUnreadByChannel(unread);
+
       const [{ count: members }, { count: weekPosts }] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("is_approved", true),
         supabase.from("posts").select("*", { count: "exact", head: true })
@@ -59,7 +59,7 @@ const Home = () => {
       setStats({ members: members ?? 0, postsThisWeek: weekPosts ?? 0 });
     };
     load();
-  }, [profile?.is_approved]);
+  }, [profile?.is_approved, user?.id]);
 
   if (loading) return null;
   if (profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
@@ -69,67 +69,85 @@ const Home = () => {
 
   return (
     <AppLayout>
-      <div className="px-6 md:px-10 pt-20 pb-32 max-w-6xl mx-auto">
-        <header className="mb-6">
-          <h1 className="text-2xl font-medium tracking-tight mb-1">member dashboard</h1>
-          <p className="text-xs font-mono text-muted-foreground">
+      <div className="px-5 md:px-8 pt-6 pb-32 max-w-6xl mx-auto">
+        <header className="mb-5">
+          <h1 className="text-xl md:text-2xl font-medium tracking-tight mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
+            member dashboard
+          </h1>
+          <p className="text-xs font-mono" style={{ color: "#8A8480" }}>
             {stats.members} builders · {stats.postsThisWeek} posts this week
           </p>
         </header>
 
-        {/* Bento — Windows Phone live tiles, tight 8px gaps */}
-        <div className="grid grid-cols-2 md:grid-cols-4 auto-rows-[150px] md:auto-rows-[170px] gap-2">
-          <BentoTile slug="resources" preview={previews.resources} className="col-span-2 row-span-2" big />
-          <BentoTile slug="ai-news"   preview={previews["ai-news"]} className="col-span-2 row-span-1" />
-          <BentoTile slug="ideas"     preview={previews.ideas}     className="col-span-2 row-span-1" />
-          <BentoTile slug="vibing"    preview={previews.vibing}    className="col-span-2 row-span-1" />
-          <BentoTile slug="hiring"    preview={previews.hiring}    className="col-span-1 row-span-1" />
-          <BentoTile slug="wins"      preview={previews.wins}      className="col-span-1 row-span-1" />
+        {/* Sharp bento — 2px gaps, 0 radius — Windows Phone */}
+        <div className="grid grid-cols-2 md:grid-cols-3 auto-rows-[150px] md:auto-rows-[180px] gap-[2px]">
+          <BentoTile slug="resources" preview={previews.resources} unread={unreadByChannel.resources} className="col-span-2 row-span-2" big />
+          <BentoTile slug="ai-news"   preview={previews["ai-news"]} unread={unreadByChannel["ai-news"]} />
+          <BentoTile slug="ideas"     preview={previews.ideas}     unread={unreadByChannel.ideas} />
+          <BentoTile slug="vibing"    preview={previews.vibing}    unread={unreadByChannel.vibing} />
+          <BentoTile slug="hiring"    preview={previews.hiring}    unread={unreadByChannel.hiring} />
+          <BentoTile slug="wins"      preview={previews.wins}      unread={unreadByChannel.wins} className="col-span-2 md:col-span-1" />
         </div>
 
-        {/* tasks shortcut */}
-        <Link to="/tasks" className="mt-6 bento-card flex items-center gap-3 hover:bg-surface-elevated transition-colors">
-          <ListChecks className="h-5 w-5 text-primary" />
+        <Link
+          to="/tasks"
+          className="mt-5 flex items-center gap-3 p-4 transition-colors hover:bg-white/[0.02]"
+          style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}
+        >
+          <ListChecks className="h-5 w-5" style={{ color: "#E8734A" }} />
           <div className="flex-1">
-            <div className="text-sm font-medium">community tasks</div>
-            <div className="text-xs text-muted-foreground font-mono">things people are working on</div>
+            <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>community tasks</div>
+            <div className="text-xs font-mono" style={{ color: "#8A8480" }}>things people are working on</div>
           </div>
         </Link>
       </div>
 
       <FloatingActions />
-      <style>{`@keyframes tilePulseHome { 0%,100% { box-shadow: 0 0 24px rgba(232,115,74,0.5); } 50% { box-shadow: 0 0 40px rgba(232,115,74,0.8); } }`}</style>
+      <style>{`@keyframes tilePulseHome { 0%,100% { box-shadow: 0 0 24px rgba(232,115,74,0.45); } 50% { box-shadow: 0 0 36px rgba(232,115,74,0.7); } }`}</style>
     </AppLayout>
   );
 };
 
-const BentoTile = ({ slug, preview, className = "", big }: any) => {
+const BentoTile = ({ slug, preview, unread, className = "", big }: any) => {
   const cfg = TILES[slug];
   if (!cfg) return null;
   const Icon = cfg.icon;
   return (
-    <Link to={`/channel/${slug}`}
-      className={`group relative rounded-2xl p-4 md:p-5 flex flex-col justify-between overflow-hidden transition-transform hover:scale-[1.01] active:scale-[0.99] ${className}`}
+    <Link
+      to={`/channel/${slug}`}
+      className={`group relative p-4 md:p-5 flex flex-col justify-between overflow-hidden transition-transform hover:scale-[1.01] active:scale-[0.99] ${className}`}
       style={{
         background: cfg.bg,
         color: cfg.fg,
+        borderRadius: 0,
         animation: cfg.glow ? "tilePulseHome 3s ease-in-out infinite" : undefined,
-      }}>
+      }}
+    >
       {cfg.badge && (
         <span className="absolute top-3 right-3 text-[10px] font-mono uppercase tracking-wider opacity-70">
           {cfg.badge}
         </span>
       )}
-      <div className="h-10 w-10 rounded-lg flex items-center justify-center"
-        style={{ background: "rgba(0,0,0,0.18)" }}>
-        <Icon className="h-5 w-5" style={{ color: cfg.fg }} strokeWidth={2} />
-      </div>
+
+      {/* Unread dot — top-right, sits above badge slot */}
+      {unread && !cfg.badge && (
+        <span
+          className="absolute top-3 right-3 h-2 w-2 rounded-full"
+          style={{ background: "#FFFFFF", boxShadow: "0 0 8px rgba(255,255,255,0.6)" }}
+        />
+      )}
+
+      <Icon className={big ? "h-8 w-8 md:h-10 md:w-10" : "h-6 w-6 md:h-7 md:w-7"} strokeWidth={2} style={{ color: cfg.fg }} />
+
       <div>
-        <h3 className={`font-medium ${big ? "text-xl" : "text-base"} leading-tight`} style={{ color: cfg.fg }}>
-          {TITLES[slug]}
+        <h3
+          className={`font-medium leading-tight ${big ? "text-lg md:text-xl" : "text-sm md:text-base"}`}
+          style={{ color: cfg.fg, letterSpacing: "-0.02em" }}
+        >
+          {cfg.label}
         </h3>
         {preview ? (
-          <p className="text-xs mt-1 line-clamp-2 opacity-80" style={{ color: cfg.fg }}>
+          <p className={`mt-1 line-clamp-2 opacity-80 ${big ? "text-sm" : "text-xs"}`} style={{ color: cfg.fg }}>
             {preview.title || preview.content}
           </p>
         ) : (

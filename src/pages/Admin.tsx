@@ -7,10 +7,29 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { AvatarBlock } from "@/components/AvatarBlock";
-import { BuilderBadge, AdminTag } from "@/components/TierBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MessageSquare, Zap, Send } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+
+const PillBtn = ({
+  variant, onClick, children, icon: Icon,
+}: { variant: "primary" | "ghost"; onClick: () => void; children: React.ReactNode; icon?: any }) => (
+  <button
+    onClick={onClick}
+    className="inline-flex items-center gap-1 font-mono transition-opacity hover:opacity-90"
+    style={{
+      background: variant === "primary" ? "#E8734A" : "#1E1E1E",
+      color: variant === "primary" ? "#0D0D0D" : "#F5F0EB",
+      border: variant === "primary" ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 999,
+      padding: "4px 14px",
+      fontSize: 12,
+    }}
+  >
+    {Icon && <Icon className="h-3 w-3" />}
+    {children}
+  </button>
+);
 
 const Admin = () => {
   const { isAdmin, loading, user } = useAuth();
@@ -79,101 +98,122 @@ const Admin = () => {
 
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto p-6 md:p-10">
+      <div className="max-w-6xl mx-auto px-5 md:px-8 py-6">
         <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
-          <h1 className="text-2xl font-medium">admin</h1>
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">auto yolo mode</span>
-                <Switch checked={yoloMode} onCheckedChange={toggleYolo} />
-                {yoloMode && (
-                  <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full animate-pulse"
-                    style={{ background: "#E8734A", color: "#0D0D0D" }}>
-                    auto yolo is live
-                  </span>
-                )}
-              </div>
-              <p className="text-xs font-mono mt-1" style={{ color: "#8A8480" }}>
-                {yoloMode
-                  ? "open doors — anyone who says they're cool gets in instantly."
-                  : "standard flow — you review every request manually."}
-              </p>
+          <h1 className="text-2xl font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>admin</h1>
+          <div
+            className="flex flex-col gap-1 px-4 py-3 transition-all"
+            style={{
+              background: "#161616",
+              border: yoloMode ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 12,
+              boxShadow: yoloMode ? "0 0 16px rgba(232,115,74,0.4)" : "none",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium" style={{ color: yoloMode ? "#E8734A" : "#F5F0EB" }}>
+                {yoloMode ? "auto yolo is live" : "auto yolo mode"}
+              </span>
+              <Switch checked={yoloMode} onCheckedChange={toggleYolo} />
             </div>
+            <p className="text-[11px] font-mono" style={{ color: "#8A8480" }}>
+              {yoloMode
+                ? "open doors — anyone who says they're cool gets in instantly."
+                : "standard flow — you review every request manually."}
+            </p>
           </div>
         </div>
 
         <Tabs defaultValue="requests">
-          <TabsList className="bg-surface hairline mb-6">
+          <TabsList className="mb-6" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
             <TabsTrigger value="requests">review requests ({requests.filter(r => r.status === "pending").length})</TabsTrigger>
             <TabsTrigger value="members">members ({members.length})</TabsTrigger>
             <TabsTrigger value="channels">channels</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="requests" className="space-y-3">
-            <div className="flex gap-2 mb-4 flex-wrap">
+          <TabsContent value="requests" className="space-y-0">
+            <div className="flex gap-1.5 mb-4 flex-wrap">
               {(["all", "pending", "approved", "rejected", "yolo"] as const).map((f) => (
-                <button key={f} onClick={() => setFilter(f)}
-                  className={`text-xs font-mono px-3 py-1.5 rounded-full hairline transition-colors ${
-                    filter === f ? "bg-primary text-primary-foreground border-primary" : "hover:bg-surface-elevated text-muted-foreground"
-                  }`}>
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className="font-mono transition-colors"
+                  style={{
+                    background: filter === f ? "#E8734A" : "#1E1E1E",
+                    color: filter === f ? "#0D0D0D" : "#8A8480",
+                    border: filter === f ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 999,
+                    padding: "4px 12px",
+                    fontSize: 11,
+                  }}
+                >
                   {f}
                 </button>
               ))}
             </div>
 
-            {filtered.length === 0 && <p className="text-sm text-muted-foreground font-mono">no requests in this filter</p>}
-            {filtered.map((r) => (
-              <div key={r.id} className="bento-card">
-                <div className="flex flex-wrap items-start gap-3 justify-between">
+            {filtered.length === 0 && (
+              <p className="text-sm font-mono" style={{ color: "#8A8480" }}>no requests in this filter</p>
+            )}
+
+            {/* Table-style rows */}
+            <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden" }}>
+              {filtered.map((r) => (
+                <div
+                  key={r.id}
+                  className="px-5 py-4 flex flex-wrap items-start gap-3 justify-between"
+                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                >
                   <div className="flex-1 min-w-[200px]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{r.name}</span>
-                      <span className="text-xs font-mono text-muted-foreground">{r.email}</span>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-medium" style={{ color: "#F5F0EB" }}>{r.name}</span>
+                      <span className="text-xs font-mono" style={{ color: "#8A8480" }}>{r.email}</span>
                       {r.onboard_path === "yolo" && (
-                        <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary">yolo</span>
+                        <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#2A1A0E", color: "#E8734A", borderRadius: 999 }}>yolo</span>
                       )}
                     </div>
-                    <p className="text-sm text-foreground/80 mb-2">{r.what_building}</p>
-                    <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+                    <p className="text-sm mb-2" style={{ color: "#F5F0EB" }}>{r.what_building}</p>
+                    <div className="flex items-center gap-2 text-xs font-mono" style={{ color: "#8A8480" }}>
                       {r.room_selected && <span>{r.room_selected}</span>}
                       <span>· {new Date(r.created_at).toLocaleDateString()}</span>
                       <span>· {r.status}</span>
                     </div>
                   </div>
                   {r.status === "pending" && (
-                    <div className="flex gap-2 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={() => setDmRequest(r)}>
-                        <MessageSquare className="h-3.5 w-3.5 mr-1" /> dm first
-                      </Button>
-                      <Button size="sm" onClick={() => yoloOnboard(r)}>
-                        <Zap className="h-3.5 w-3.5 mr-1" /> yolo onboard
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => reject(r)}>reject</Button>
+                    <div className="flex gap-1.5 flex-wrap">
+                      <PillBtn variant="ghost" icon={MessageSquare} onClick={() => setDmRequest(r)}>dm first</PillBtn>
+                      <PillBtn variant="primary" icon={Zap} onClick={() => yoloOnboard(r)}>yolo onboard</PillBtn>
+                      <PillBtn variant="ghost" onClick={() => reject(r)}>reject</PillBtn>
                     </div>
                   )}
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </TabsContent>
 
-          <TabsContent value="members" className="space-y-2">
-            {members.map((m) => (
-              <div key={m.id} className="bento-card flex items-center gap-4 py-3">
-                <AvatarBlock url={m.avatar_url} name={m.display_name} size={36} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium truncate">{m.display_name}</span>
-                    <BuilderBadge />
-                    {m.is_admin && <AdminTag />}
+          <TabsContent value="members" className="space-y-0">
+            <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden" }}>
+              {members.map((m) => (
+                <div
+                  key={m.id}
+                  className="px-5 py-3 flex items-center gap-4"
+                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                >
+                  <AvatarBlock url={m.avatar_url} name={m.display_name} size={36} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate" style={{ color: "#F5F0EB" }}>{m.display_name}</span>
+                      <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#2A1A0E", color: "#E8734A", borderRadius: 999 }}>builder</span>
+                      {m.is_admin && <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#1E1E1E", color: "#C9B99A", borderRadius: 999 }}>admin</span>}
+                    </div>
+                    <span className="text-xs font-mono" style={{ color: "#8A8480" }}>joined {new Date(m.created_at).toLocaleDateString()}</span>
                   </div>
-                  <span className="text-xs font-mono text-muted-foreground">joined {new Date(m.created_at).toLocaleDateString()}</span>
+                  {m.id !== user?.id && (
+                    <PillBtn variant="ghost" onClick={() => removeMember(m.id)}>remove</PillBtn>
+                  )}
                 </div>
-                {m.id !== user?.id && (
-                  <Button size="sm" variant="ghost" onClick={() => removeMember(m.id)}>remove</Button>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </TabsContent>
 
           <TabsContent value="channels" className="space-y-3">
@@ -181,17 +221,19 @@ const Admin = () => {
           </TabsContent>
         </Tabs>
 
-        {/* DM thread */}
         <DmThread request={dmRequest} onClose={() => { setDmRequest(null); loadAll(); }} onApprove={(req) => yoloOnboard(req)} onReject={reject} />
 
-        {/* Credentials modal */}
         <Dialog open={!!credentialModal} onOpenChange={(o) => !o && setCredentialModal(null)}>
-          <DialogContent className="bg-surface border-0 hairline">
-            <DialogHeader><DialogTitle className="font-normal">approved</DialogTitle></DialogHeader>
-            <p className="text-sm text-muted-foreground mb-4">share these credentials with the new builder. they should change their password.</p>
+          <DialogContent style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
+            <DialogHeader><DialogTitle className="font-medium" style={{ color: "#F5F0EB" }}>approved</DialogTitle></DialogHeader>
+            <p className="text-sm mb-4" style={{ color: "#8A8480" }}>share these credentials with the new builder. they should change their password.</p>
             <div className="space-y-2 font-mono text-xs">
-              <div className="bento-card p-3 break-all"><span className="text-muted-foreground">email · </span>{credentialModal?.email}</div>
-              <div className="bento-card p-3 break-all"><span className="text-muted-foreground">password · </span>{credentialModal?.password}</div>
+              <div className="p-3 break-all" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, color: "#F5F0EB" }}>
+                <span style={{ color: "#8A8480" }}>email · </span>{credentialModal?.email}
+              </div>
+              <div className="p-3 break-all" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, color: "#F5F0EB" }}>
+                <span style={{ color: "#8A8480" }}>password · </span>{credentialModal?.password}
+              </div>
             </div>
             <Button onClick={() => { navigator.clipboard.writeText(`${credentialModal?.email} / ${credentialModal?.password}`); toast.success("copied"); }} className="mt-3">copy</Button>
           </DialogContent>
@@ -230,25 +272,31 @@ const DmThread = ({ request, onClose, onApprove, onReject }: any) => {
 
   return (
     <Dialog open={!!request} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-surface border-0 hairline max-w-2xl">
+      <DialogContent className="max-w-2xl" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
         <DialogHeader>
-          <DialogTitle className="font-normal flex items-center gap-2">
+          <DialogTitle className="font-medium flex items-center gap-2" style={{ color: "#F5F0EB" }}>
             <MessageSquare className="h-4 w-4" /> dm with {request?.name}
           </DialogTitle>
         </DialogHeader>
-        <div className="bento-card mb-3">
-          <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">building</p>
-          <p className="text-sm">{request?.what_building}</p>
+        <div className="p-3 mb-3" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8 }}>
+          <p className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#8A8480" }}>building</p>
+          <p className="text-sm" style={{ color: "#F5F0EB" }}>{request?.what_building}</p>
         </div>
         <div className="max-h-[320px] overflow-y-auto space-y-3 p-1">
-          {messages.length === 0 && <p className="text-xs font-mono text-center text-muted-foreground py-8">no messages yet — say hi.</p>}
+          {messages.length === 0 && <p className="text-xs font-mono text-center py-8" style={{ color: "#8A8480" }}>no messages yet — say hi.</p>}
           {messages.map((m) => (
             <div key={m.id} className={`flex ${m.sender_type === "admin" ? "justify-end" : "justify-start"}`}>
               <div className="max-w-[75%]">
                 {m.sender_type === "requester" && (
-                  <div className="text-[10px] font-mono uppercase tracking-wider mb-1 text-muted-foreground">{request?.name}</div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#8A8480" }}>{request?.name}</div>
                 )}
-                <div className="px-3 py-2 rounded-lg text-sm bg-surface-elevated">{m.content}</div>
+                <div className="px-3 py-2 text-sm" style={{
+                  background: m.sender_type === "admin" ? "#E8734A" : "#1E1E1E",
+                  color: m.sender_type === "admin" ? "#0D0D0D" : "#F5F0EB",
+                  borderRadius: 8,
+                }}>
+                  {m.content}
+                </div>
               </div>
             </div>
           ))}
@@ -257,12 +305,13 @@ const DmThread = ({ request, onClose, onApprove, onReject }: any) => {
         <div className="flex gap-2 mt-3">
           <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="type a message…"
             onKeyDown={(e) => e.key === "Enter" && send()}
-            className="flex-1 bg-background hairline rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            className="flex-1 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           <Button size="icon" onClick={send}><Send className="h-4 w-4" /></Button>
         </div>
-        <div className="flex gap-2 pt-3 hairline-t mt-3 justify-end">
-          <Button variant="ghost" onClick={() => { onReject(request); onClose(); }}>reject</Button>
-          <Button onClick={() => { onApprove(request); onClose(); }}>approve as builder</Button>
+        <div className="flex gap-2 pt-3 mt-3 justify-end" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <PillBtn variant="ghost" onClick={() => { onReject(request); onClose(); }}>reject</PillBtn>
+          <PillBtn variant="primary" onClick={() => { onApprove(request); onClose(); }}>approve as builder</PillBtn>
         </div>
       </DialogContent>
     </Dialog>
@@ -292,21 +341,21 @@ const ChannelAdminRow = ({ channel }: { channel: any }) => {
   };
 
   return (
-    <div className="bento-card">
+    <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 20 }}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-medium">{channel.name.toLowerCase()}</h3>
-        <span className="text-xs font-mono text-muted-foreground">{count} posts</span>
+        <h3 className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>{channel.name.toLowerCase()}</h3>
+        <span className="text-xs font-mono" style={{ color: "#8A8480" }}>{count} posts</span>
       </div>
       <div className="space-y-2">
         {recent.map((p) => (
           <div key={p.id} className="flex items-center gap-2 text-sm">
-            <span className="flex-1 truncate">{p.title || p.content?.slice(0, 60)}</span>
-            <span className="text-[10px] font-mono uppercase text-muted-foreground">{p.visibility}</span>
-            <Button size="sm" variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>{p.is_pinned ? "unpin" : "pin"}</Button>
-            <Button size="sm" variant="ghost" onClick={() => remove(p.id)}>×</Button>
+            <span className="flex-1 truncate" style={{ color: "#F5F0EB" }}>{p.title || p.content?.slice(0, 60)}</span>
+            <span className="text-[10px] font-mono uppercase" style={{ color: "#8A8480" }}>{p.visibility}</span>
+            <PillBtn variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>{p.is_pinned ? "unpin" : "pin"}</PillBtn>
+            <PillBtn variant="ghost" onClick={() => remove(p.id)}>×</PillBtn>
           </div>
         ))}
-        {recent.length === 0 && <p className="text-xs text-muted-foreground font-mono">no posts</p>}
+        {recent.length === 0 && <p className="text-xs font-mono" style={{ color: "#8A8480" }}>no posts</p>}
       </div>
     </div>
   );
