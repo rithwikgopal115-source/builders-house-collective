@@ -32,12 +32,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
- const loadProfile = async (uid: string): Promise<void> => {
-  const { data: p } = await supabase
+const loadProfile = async (uid: string): Promise<void> => {
+  const { data: p, error } = await supabase
     .from("profiles")
     .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
     .eq("id", uid)
     .maybeSingle();
+  if (error) return; // query failed — preserve existing profile, don't wipe it
   if (p) {
     setProfile(p as ProfileLite);
     setIsAdmin(!!p.is_admin);
@@ -51,22 +52,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let initialized = false;
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-
-      if (sess?.user) {
-        await loadProfile(sess.user.id);
-      } else {
-        setProfile(null);
-        setIsAdmin(false);
-      }
-
-      if (!initialized) {
-        initialized = true;
-        setLoading(false);
-      }
-    });
-
+  try {
+    setSession(sess);
+    setUser(sess?.user ?? null);
+    if (sess?.user) {
+      await loadProfile(sess.user.id);
+    } else {
+      setProfile(null);
+      setIsAdmin(false);
+    }
+  } catch (e) {
+    console.error("auth state change error", e);
+  } finally {
+    if (!initialized) {
+      initialized = true;
+      setLoading(false);
+    }
+  }
+});
     // Fallback: if there is no session and onAuthStateChange hasn't fired, unblock loading
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       if (!s && !initialized) {
