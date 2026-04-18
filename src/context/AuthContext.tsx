@@ -89,7 +89,16 @@ const loadProfile = async (uid: string): Promise<void> => {
       }
     });
 
+    // Hard timeout: if nothing resolved within 4s, unblock loading anyway
+    const timeout = setTimeout(() => {
+      if (\!initialized) {
+        initialized = true;
+        setLoading(false);
+      }
+    }, 4000);
+
     return () => {
+      clearTimeout(timeout);
       sub.subscription.unsubscribe();
     };
   }, []);

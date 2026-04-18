@@ -39,7 +39,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     return () => { supabase.removeChannel(ch); };
   }, [user, location.pathname]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
+  if (loading && !user) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
 
   return (
