@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Navigate, Link, useNavigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const Login = () => {
   const { user, profile, signIn, loading } = useAuth();
-  const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,7 +29,8 @@ const Login = () => {
     const { error } = await signIn(email.trim().toLowerCase(), password);
     setBusy(false);
     if (error) { toast.error(error); return; }
-    nav("/home");
+    // Do NOT navigate manually — the Navigate guards above handle redirect
+    // once onAuthStateChange fires and profile loads.
   };
 
   return (
