@@ -32,36 +32,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const loadProfile = async (uid: string) => {
+  const loadProfile = async (uid: string): Promise<void> => {
     const [{ data: p }, { data: r }] = await Promise.all([
       supabase
         .from("profiles")
         .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
         .eq("id", uid)
         .maybeSingle(),
-      supabase.from("user_roles").select("role").eq("user_id", uid).eq("role", "admin").maybeSingle(),
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", uid)
+        .eq("role", "admin")
+        .maybeSingle(),
     ]);
     setProfile((p as ProfileLite) ?? null);
     setIsAdmin(!!r || !!p?.is_admin);
   };
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+    let initialized = false;
+
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
       setSession(sess);
       setUser(sess?.user ?? null);
+
       if (sess?.user) {
-        setTimeout(() => loadProfile(sess.user.id), 0);
+        await loadProfile(sess.user.id);
       } else {
         setProfile(null);
         setIsAdmin(false);
       }
+
+      if (!initialized) {
+        initialized = true;
+        setLoading(false);
+      }
     });
 
+    // Fallback: if there is no session and onAuthStateChange hasn't fired, unblock loading
     supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) loadProfile(s.user.id).then(() => setLoading(false));
-      else setLoading(false);
+      if (!s && !initialized) {
+        initialized = true;
+        setLoading(false);
+      }
     });
 
     return () => sub.subscription.unsubscribe();
@@ -72,9 +86,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error: error?.message ?? null };
   };
 
-  const signOut = async () => { await supabase.auth.signOut(); };
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
 
-  const refreshProfile = async () => { if (user) await loadProfile(user.id); };
+  const refreshProfile = async () => {
+    if (user) await loadProfile(user.id);
+  };
 
   return (
     <AuthContext.Provider value={{ user, session, profile, isAdmin, loading, signIn, signOut, refreshProfile }}>
