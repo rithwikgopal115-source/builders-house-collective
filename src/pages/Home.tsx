@@ -61,11 +61,12 @@ const Home = () => {
     load();
   }, [profile?.is_approved, user?.id]);
 
-  if (loading || (user && !profile)) return (
+  if (loading) return (
   <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#8A8480" }}>
     loading…
   </div>
 );
+  if (!loading && user && !profile) return <Navigate to="/waiting" replace />;
   if (!user) return <Navigate to="/login" replace />;
   if (profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
