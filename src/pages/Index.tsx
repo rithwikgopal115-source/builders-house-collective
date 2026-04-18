@@ -254,6 +254,8 @@ const RequestAccessPanel = () => {
           }))
         );
       }
+      // Persist email so returning visitors auto-see their thread
+      localStorage.setItem("bh-pending-email", email.trim().toLowerCase());
       setSubmitted(true);
     } finally {
       setBusy(false);
@@ -270,7 +272,14 @@ const RequestAccessPanel = () => {
           <ArrowRight className="h-5 w-5" style={{ color: "#E8734A" }} />
         </div>
         <p className="text-lg font-medium mb-2" style={{ color: "#F5F0EB" }}>you're on the list.</p>
-        <p className="text-sm" style={{ color: "#8A8480" }}>we review every request personally. sit tight.</p>
+        <p className="text-sm mb-4" style={{ color: "#8A8480" }}>we review every request personally. sit tight.</p>
+        <Link
+          to="/waiting"
+          className="text-xs font-mono uppercase tracking-wider transition-opacity hover:opacity-70"
+          style={{ color: "#E8734A" }}
+        >
+          view your request status →
+        </Link>
       </div>
     );
   }

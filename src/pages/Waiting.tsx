@@ -24,7 +24,10 @@ const BackLink = () => (
 const Waiting = () => {
   const { user, profile, loading, profileLoading, signOut } = useAuth();
   const [email, setEmail] = useState("");
-  const [statusEmail, setStatusEmail] = useState<string | null>(null);
+  // Auto-load from localStorage so returning visitors skip the email input form
+  const [statusEmail, setStatusEmail] = useState<string | null>(() => {
+    try { return localStorage.getItem("bh-pending-email"); } catch { return null; }
+  });
   const [request, setRequest] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
@@ -91,10 +94,14 @@ const Waiting = () => {
           <h1 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>waiting room</h1>
           <p className="text-sm mb-6" style={{ color: "#8A8480" }}>enter the email you applied with.</p>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email" type="email"
-            onKeyDown={(e) => e.key === "Enter" && setStatusEmail(email.trim())}
+            onKeyDown={(e) => { if (e.key === "Enter") { const v = email.trim().toLowerCase(); localStorage.setItem("bh-pending-email", v); setStatusEmail(v); } }}
             className="w-full px-3 py-2.5 text-sm mb-3"
             style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
-          <Button onClick={() => setStatusEmail(email.trim())} className="w-full">check status</Button>
+          <Button onClick={() => {
+            const e = email.trim().toLowerCase();
+            localStorage.setItem("bh-pending-email", e);
+            setStatusEmail(e);
+          }} className="w-full">check status</Button>
         </div>
       </div>
     );
@@ -113,7 +120,7 @@ const Waiting = () => {
         <BackLink />
         <div className="text-center">
           <p className="text-sm mb-3" style={{ color: "#8A8480" }}>no application found.</p>
-          <Button variant="ghost" onClick={() => { setStatusEmail(null); setEmail(""); }}>try another email</Button>
+          <Button variant="ghost" onClick={() => { localStorage.removeItem("bh-pending-email"); setStatusEmail(null); setEmail(""); }}>try another email</Button>
         </div>
       </div>
     );
