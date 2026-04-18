@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, Navigate, Link } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,8 +7,18 @@ import { useAuth } from "@/context/AuthContext";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FloatingActions } from "@/components/FloatingActions";
 import { toast } from "sonner";
+import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, Send } from "lucide-react";
 
 interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; }
+
+const ICONS: Record<string, { icon: any; color: string }> = {
+  "resources": { icon: Star,       color: "#E8734A" },
+  "ai-news":   { icon: Zap,         color: "#1D6AE5" },
+  "ideas":     { icon: Lightbulb,   color: "#F5C518" },
+  "vibing":    { icon: Music,       color: "#7C3AED" },
+  "hiring":    { icon: Briefcase,   color: "#16A34A" },
+  "wins":      { icon: Trophy,      color: "#EA580C" },
+};
 
 const ChannelPage = () => {
   const { slug } = useParams();
@@ -66,27 +76,35 @@ const ChannelPage = () => {
   if (notFound) return <Navigate to="/home" replace />;
   if (!channel) return <div className="min-h-screen p-10 text-muted-foreground font-mono text-sm">loading…</div>;
 
-  // Public visitor on a public-visible channel: minimal shell, public posts only.
+  const iconCfg = ICONS[channel.slug] ?? { icon: Star, color: "#E8734A" };
+  const Icon = iconCfg.icon;
+
+  // Public visitor on a public-visible channel
   if (!user || !isApproved) {
     if (!channel.is_public_visible) return <Navigate to="/" replace />;
     const publicPosts = posts.filter((p) => p.visibility === "public");
     return (
       <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
-        <nav className="hairline-b">
+        <nav style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="max-w-4xl mx-auto px-6 md:px-10 py-5 flex items-center justify-between">
-            <Link to={user ? "/home" : "/"} className="text-sm font-medium tracking-tight">← builders house</Link>
-            <Link to="/login" className="text-xs font-mono uppercase tracking-wider text-muted-foreground hover:text-primary">login</Link>
+            <Link to={user ? "/home" : "/"} className="text-sm font-medium tracking-tight" style={{ color: "#F5F0EB" }}>← builders house</Link>
+            <Link to="/login" className="text-xs font-mono uppercase tracking-wider hover:text-primary" style={{ color: "#8A8480" }}>login</Link>
           </div>
         </nav>
         <div className="max-w-3xl mx-auto px-6 md:px-10 py-10">
-          <header className="mb-8">
-            <h1 className="text-3xl font-medium tracking-tight">{channel.name.toLowerCase()}</h1>
-            {channel.description && <p className="text-muted-foreground mt-2 text-sm">{channel.description}</p>}
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mt-3">public posts only · request access for full feed</p>
+          <header className="mb-8 flex items-start gap-4">
+            <div className="h-12 w-12 flex items-center justify-center" style={{ background: iconCfg.color, borderRadius: 12 }}>
+              <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
+            </div>
+            <div>
+              <h1 className="text-3xl font-medium tracking-tight" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>{channel.name.toLowerCase()}</h1>
+              {channel.description && <p className="text-sm mt-2" style={{ color: "#8A8480" }}>{channel.description}</p>}
+              <p className="text-[10px] font-mono uppercase tracking-wider mt-3" style={{ color: "#8A8480" }}>public posts only · request access for full feed</p>
+            </div>
           </header>
           <div className="space-y-4">
             {publicPosts.length === 0 && (
-              <div className="bento-card text-center py-16 text-sm text-muted-foreground font-mono">
+              <div className="text-center py-16 text-sm font-mono" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, color: "#8A8480" }}>
                 no public posts here yet.
               </div>
             )}
@@ -101,34 +119,47 @@ const ChannelPage = () => {
 
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto p-6 md:p-10 pb-32">
-        <header className="mb-6">
-          <Link to="/home" className="text-xs font-mono uppercase tracking-wider text-muted-foreground hover:text-primary">← home</Link>
-          <h1 className="text-3xl font-medium tracking-tight mt-3">{channel.name.toLowerCase()}</h1>
-          {channel.description && <p className="text-muted-foreground mt-2 text-sm">{channel.description}</p>}
+      <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+        <header className="mb-6 flex items-center gap-4">
+          <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
+            <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-medium tracking-tight truncate" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
+              {channel.name.toLowerCase()}
+            </h1>
+            {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#8A8480" }}>{channel.description}</p>}
+          </div>
         </header>
 
-        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-          <TabsList className="bg-surface hairline mb-6">
-            <TabsTrigger value="posts">posts</TabsTrigger>
-            <TabsTrigger value="resources">resources</TabsTrigger>
-          </TabsList>
+        {/* Two columns on desktop: feed left ~60%, chat right ~40%. Single column on mobile. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+          <div>
+            <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+              <TabsList className="mb-4" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <TabsTrigger value="posts">posts</TabsTrigger>
+                <TabsTrigger value="resources">resources</TabsTrigger>
+              </TabsList>
 
-          <TabsContent value={tab} className="space-y-4">
-            {visible.length === 0 && (
-              <div className="bento-card text-center py-16 text-sm text-muted-foreground font-mono">
-                {tab === "resources" ? "no resources saved yet." : "nothing here yet. be the first."}
-              </div>
-            )}
-            {visible.map((p) => (
-              <PostCard
-                key={p.id}
-                post={p}
-                onAdminRequestPublic={isAdmin ? requestPublic : undefined}
-              />
-            ))}
-          </TabsContent>
-        </Tabs>
+              <TabsContent value={tab} className="space-y-4">
+                {visible.length === 0 && (
+                  <div className="text-center py-16 text-sm font-mono" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, color: "#8A8480" }}>
+                    {tab === "resources" ? "no resources saved yet." : "nothing here yet. be the first."}
+                  </div>
+                )}
+                {visible.map((p) => (
+                  <PostCard
+                    key={p.id}
+                    post={p}
+                    onAdminRequestPublic={isAdmin ? requestPublic : undefined}
+                  />
+                ))}
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <ChannelChat channelId={channel.id} channelName={channel.name} />
+        </div>
       </div>
 
       <FloatingActions
@@ -137,6 +168,122 @@ const ChannelPage = () => {
         onCreated={load}
       />
     </AppLayout>
+  );
+};
+
+/**
+ * Lightweight group chat panel — uses comments table with a special post_id
+ * sentinel pattern would be nicer, but for now we just render a placeholder
+ * stream backed by the channel's most-recent quick replies. Realtime-ready
+ * skeleton; can be upgraded to a dedicated chat_messages table later.
+ */
+const ChannelChat = ({ channelId, channelName }: { channelId: string; channelName: string }) => {
+  const { user, profile } = useAuth();
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<any[]>([]);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    // Fetch latest 30 short text posts in this channel as a chat-style stream
+    const { data } = await supabase
+      .from("posts")
+      .select("id, content, created_at, user_id, profiles!posts_user_id_fkey(display_name, avatar_url)")
+      .eq("channel_id", channelId)
+      .eq("type", "text")
+      .is("title", null)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    setMessages((data ?? []).reverse());
+  }, [channelId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel(`chat:${channelId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts", filter: `channel_id=eq.${channelId}` }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [channelId, load]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const send = async () => {
+    if (!draft.trim() || !user || !profile?.is_approved) return;
+    const text = draft.trim();
+    setDraft("");
+    const { error } = await supabase.from("posts").insert({
+      channel_id: channelId,
+      user_id: user.id,
+      content: text,
+      type: "text",
+      visibility: "community",
+      is_resource: false,
+    });
+    if (error) toast.error(error.message);
+  };
+
+  return (
+    <aside
+      className="flex flex-col self-start sticky top-20"
+      style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, height: "calc(100vh - 8rem)" }}
+    >
+      <header className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="text-xs font-mono uppercase tracking-wider" style={{ color: "#8A8480" }}>group chat</div>
+        <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>{channelName.toLowerCase()}</div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {messages.length === 0 && (
+          <p className="text-xs font-mono text-center py-8" style={{ color: "#8A8480" }}>no messages yet — say hi.</p>
+        )}
+        {messages.map((m) => {
+          const mine = m.user_id === user?.id;
+          return (
+            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div className="max-w-[80%]">
+                {!mine && (
+                  <div className="text-[10px] font-mono uppercase tracking-wider mb-0.5" style={{ color: "#8A8480" }}>
+                    {m.profiles?.display_name ?? "member"}
+                  </div>
+                )}
+                <div
+                  className="px-3 py-2 text-sm"
+                  style={{
+                    background: mine ? "#E8734A" : "#1E1E1E",
+                    color: mine ? "#0D0D0D" : "#F5F0EB",
+                    borderRadius: 8,
+                  }}
+                >
+                  {m.content}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={endRef} />
+      </div>
+
+      {profile?.is_approved && (
+        <div className="p-3 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder="say something…"
+            className="flex-1 px-3 py-2 text-sm focus:outline-none"
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
+          />
+          <button
+            onClick={send}
+            className="h-9 w-9 flex items-center justify-center transition-opacity hover:opacity-90"
+            style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8 }}
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </aside>
   );
 };
 

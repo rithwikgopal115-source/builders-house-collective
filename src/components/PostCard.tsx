@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { AvatarBlock } from "./AvatarBlock";
-import { BuilderBadge, AdminTag } from "./TierBadge";
-import { MessageCircle, ExternalLink, Globe, Pin } from "lucide-react";
+import { MessageCircle, ExternalLink, Globe, Pin, Play } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -47,6 +46,7 @@ const ytId = (url: string): string | null => {
 };
 
 const isImage = (url: string) => /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url);
+const safeHost = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
 export const PostCard = ({
   post,
@@ -68,6 +68,7 @@ export const PostCard = ({
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [reactedEmojis, setReactedEmojis] = useState<Set<string>>(new Set());
+  const [playVideo, setPlayVideo] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -127,20 +128,43 @@ export const PostCard = ({
   const showAuthor = !readOnly;
   const yt = post.url && post.type === "video" ? ytId(post.url) : null;
   const showImage = post.url && isImage(post.url);
+  const showLinkPreview = post.url && !yt && !showImage;
 
   return (
-    <article className="bento-card animate-fade-in">
-      <div className="flex items-center gap-3 mb-4">
+    <article
+      className="animate-fade-in"
+      style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 24 }}
+    >
+      {/* Top row: avatar + name + builder pill + timestamp */}
+      <div className="flex items-center gap-3 mb-3">
         {showAuthor ? (
-          <Link to={`/profile/${post.user_id}`} className="flex items-center gap-3 group">
-            <AvatarBlock url={post.author?.avatar_url} name={authorName} size={36} />
-            <div>
+          <Link to={`/profile/${post.user_id}`} className="flex items-center gap-3 group min-w-0 flex-1">
+            <AvatarBlock url={post.author?.avatar_url} name={authorName} size={32} />
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium group-hover:text-primary transition-colors">{authorName}</span>
-                <BuilderBadge />
-                {post.author?.is_admin && <AdminTag />}
+                <span className="text-sm font-medium truncate" style={{ color: "#F5F0EB" }}>{authorName}</span>
+                <span
+                  className="text-[11px] uppercase tracking-wider"
+                  style={{
+                    background: "#2A1A0E",
+                    color: "#E8734A",
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    fontSize: 11,
+                  }}
+                >
+                  builder
+                </span>
+                {post.author?.is_admin && (
+                  <span
+                    className="text-[11px] uppercase tracking-wider"
+                    style={{ background: "#1E1E1E", color: "#C9B99A", padding: "2px 8px", borderRadius: 999, fontSize: 11 }}
+                  >
+                    admin
+                  </span>
+                )}
               </div>
-              <div className="text-xs text-muted-foreground font-mono">
+              <div className="text-[11px] font-mono uppercase mt-0.5" style={{ color: "#8A8480" }}>
                 {timeAgo(post.created_at)}
                 {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
               </div>
@@ -148,49 +172,85 @@ export const PostCard = ({
           </Link>
         ) : (
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-surface-elevated hairline flex items-center justify-center">
-              <span className="text-xs">b</span>
+            <div className="h-8 w-8 rounded-full flex items-center justify-center" style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <span className="text-xs" style={{ color: "#F5F0EB" }}>b</span>
             </div>
             <div>
-              <div className="text-sm font-medium">builders house</div>
-              <div className="text-xs text-muted-foreground font-mono">
+              <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>builders house</div>
+              <div className="text-[11px] font-mono uppercase" style={{ color: "#8A8480" }}>
                 {timeAgo(post.created_at)}
                 {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
               </div>
             </div>
           </div>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
           {post.is_pinned && (
-            <span title="pinned" className="text-primary"><Pin className="h-3.5 w-3.5" /></span>
+            <Pin className="h-3.5 w-3.5" style={{ color: "#E8734A" }} />
           )}
           {post.visibility === "public" && (
-            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full" style={{ background: "#1A3A2A", color: "#7AC8A0" }}>
+            <span
+              className="text-[10px] font-mono uppercase tracking-wider"
+              style={{ background: "#1A3A2A", color: "#7AC8A0", padding: "2px 8px", borderRadius: 999 }}
+            >
               public
             </span>
           )}
           {post.visibility === "private" && (
-            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full bg-surface-elevated text-muted-foreground">
+            <span
+              className="text-[10px] font-mono uppercase tracking-wider"
+              style={{ background: "#1E1E1E", color: "#8A8480", padding: "2px 8px", borderRadius: 999 }}
+            >
               private
             </span>
           )}
         </div>
       </div>
 
-      {post.title && <h3 className="text-lg font-medium mb-2 leading-snug">{post.title}</h3>}
+      {post.title && (
+        <h3 className="font-medium mb-2 leading-snug" style={{ color: "#F5F0EB", fontSize: 15, letterSpacing: "-0.01em" }}>
+          {post.title}
+        </h3>
+      )}
       {post.content && (
-        <p className={`text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap ${compact ? "line-clamp-3" : ""}`}>
+        <p
+          className={`whitespace-pre-wrap ${compact ? "line-clamp-3" : ""}`}
+          style={{ color: "#8A8480", fontSize: 14, lineHeight: 1.5 }}
+        >
           {post.content}
         </p>
       )}
 
-      {/* YouTube embed */}
-      {yt && (
-        <div className="mt-4 aspect-video rounded-lg overflow-hidden hairline">
+      {/* YouTube — thumbnail with coral play overlay until clicked */}
+      {yt && !playVideo && (
+        <button
+          onClick={() => setPlayVideo(true)}
+          className="mt-4 relative w-full aspect-video overflow-hidden block group"
+          style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          <img
+            src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`}
+            alt={post.title || "video"}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div
+              className="flex items-center justify-center transition-transform group-hover:scale-110"
+              style={{ background: "rgba(232,115,74,0.9)", borderRadius: "50%", width: 48, height: 48 }}
+            >
+              <Play className="h-5 w-5 ml-0.5" style={{ color: "#0D0D0D" }} fill="#0D0D0D" />
+            </div>
+          </div>
+        </button>
+      )}
+      {yt && playVideo && (
+        <div className="mt-4 aspect-video overflow-hidden" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}>
           <iframe
-            src={`https://www.youtube.com/embed/${yt}`}
+            src={`https://www.youtube.com/embed/${yt}?autoplay=1`}
             className="w-full h-full"
             allowFullScreen
+            allow="autoplay; encrypted-media"
             title={post.title || "video"}
           />
         </div>
@@ -199,57 +259,93 @@ export const PostCard = ({
       {/* Image */}
       {showImage && !yt && (
         <a href={post.url!} target="_blank" rel="noreferrer" className="block mt-4">
-          <img src={post.url!} alt={post.title || "post image"} className="w-full rounded-lg hairline" loading="lazy" />
+          <img src={post.url!} alt={post.title || "post image"} className="w-full" loading="lazy" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }} />
         </a>
       )}
 
-      {/* Plain link */}
-      {post.url && !yt && !showImage && (
-        <a href={post.url} target="_blank" rel="noreferrer"
-          className="mt-4 inline-flex items-center gap-2 text-xs font-mono text-secondary hover:text-primary transition-colors">
-          <ExternalLink className="h-3 w-3" />
-          {safeHost(post.url)}
+      {/* Link preview card */}
+      {showLinkPreview && (
+        <a
+          href={post.url!}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 flex items-stretch overflow-hidden transition-opacity hover:opacity-90"
+          style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}
+        >
+          <div
+            className="flex-shrink-0 flex items-center justify-center"
+            style={{ width: 80, background: "#0D0D0D" }}
+          >
+            <ExternalLink className="h-5 w-5" style={{ color: "#8A8480" }} />
+          </div>
+          <div className="flex-1 min-w-0 p-3">
+            <div className="text-[10px] font-mono uppercase tracking-wider truncate" style={{ color: "#8A8480" }}>
+              {safeHost(post.url!)}
+            </div>
+            <div className="text-sm font-medium truncate mt-0.5" style={{ color: "#F5F0EB" }}>
+              {post.title || post.url}
+            </div>
+          </div>
         </a>
       )}
 
+      {/* Reaction row */}
       {!readOnly && (
-        <div className="mt-5 flex items-center gap-1 flex-wrap">
-          {EMOJIS.map((e) => (
-            <button key={e} onClick={() => react(e)}
-              className={`text-sm px-2 py-1 rounded-full hairline transition-colors ${
-                reactedEmojis.has(e) ? "bg-surface-elevated" : "hover:bg-surface-elevated"
-              }`}>
-              {e}
-            </button>
-          ))}
-          {reactionCount > 0 && <span className="text-xs text-muted-foreground font-mono ml-1">{reactionCount}</span>}
+        <div className="mt-5 flex items-center gap-1.5 flex-wrap">
+          {EMOJIS.map((e) => {
+            const active = reactedEmojis.has(e);
+            return (
+              <button
+                key={e}
+                onClick={() => react(e)}
+                className="text-xs transition-colors"
+                style={{
+                  background: "#1E1E1E",
+                  border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: 999,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  color: active ? "#E8734A" : "#F5F0EB",
+                }}
+              >
+                {e}
+              </button>
+            );
+          })}
+          {reactionCount > 0 && (
+            <span className="text-xs font-mono ml-1" style={{ color: "#8A8480" }}>{reactionCount}</span>
+          )}
           {isAdmin && post.visibility === "community" && onAdminRequestPublic && (
-            <button onClick={() => onAdminRequestPublic(post)}
-              className="ml-2 text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full hairline hover:bg-surface-elevated flex items-center gap-1">
+            <button
+              onClick={() => onAdminRequestPublic(post)}
+              className="ml-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 transition-colors"
+              style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 999, padding: "4px 10px", color: "#C9B99A" }}
+            >
               <Globe className="h-3 w-3" /> request public
             </button>
           )}
-          <button onClick={toggleComments}
-            className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 font-mono">
+          <button
+            onClick={toggleComments}
+            className="ml-auto text-xs flex items-center gap-1.5 font-mono transition-colors hover:text-foreground"
+            style={{ color: "#8A8480" }}
+          >
             <MessageCircle className="h-3.5 w-3.5" />
-            {commentCount}
+            {commentCount} {commentCount === 1 ? "comment" : "comments"}
           </button>
         </div>
       )}
 
       {showComments && (
-        <div className="mt-5 pt-5 hairline-t space-y-3">
+        <div className="mt-5 pt-5 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           {comments.map((c) => (
             <div key={c.id} className="flex gap-2">
               <AvatarBlock url={c.profiles?.avatar_url} name={c.profiles?.display_name ?? "?"} size={28} />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                  <span className="text-xs font-medium">{c.profiles?.display_name}</span>
-                  <BuilderBadge />
-                  {c.profiles?.is_admin && <AdminTag />}
-                  <span className="text-[10px] text-muted-foreground font-mono">{timeAgo(c.created_at)}</span>
+                  <span className="text-xs font-medium" style={{ color: "#F5F0EB" }}>{c.profiles?.display_name}</span>
+                  <span className="text-[10px] font-mono" style={{ color: "#8A8480" }}>{timeAgo(c.created_at)}</span>
                 </div>
-                <p className="text-sm text-foreground/80">{c.content}</p>
+                <p className="text-sm" style={{ color: "#F5F0EB" }}>{c.content}</p>
               </div>
             </div>
           ))}
@@ -261,7 +357,8 @@ export const PostCard = ({
                 onKeyDown={(e) => e.key === "Enter" && submitComment()}
                 placeholder="add a comment"
                 maxLength={1000}
-                className="flex-1 bg-background hairline rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="flex-1 px-3 py-2 text-sm focus:outline-none"
+                style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
               />
               <Button size="sm" onClick={submitComment}>send</Button>
             </div>
@@ -271,8 +368,6 @@ export const PostCard = ({
     </article>
   );
 };
-
-function safeHost(url: string) { try { return new URL(url).hostname; } catch { return url; } }
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();

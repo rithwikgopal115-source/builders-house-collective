@@ -27,8 +27,23 @@ const TYPES: { v: PostType; i: any; l: string }[] = [
   { v: "template", i: LayoutTemplate, l: "template" },
 ];
 
-// Map UI types onto the DB's allowed ('text' | 'link' | 'video' | 'doc') set.
+const CHANNEL_EMOJI: Record<string, string> = {
+  "resources": "⭐", "ai-news": "⚡", "ideas": "💡",
+  "vibing": "🎵", "hiring": "💼", "wins": "🏆",
+};
+
 const dbType = (t: PostType) => (t === "pdf" || t === "template" ? "doc" : t);
+
+// Solid coral when active, dark + hairline when not
+const PillStyle = (active: boolean): React.CSSProperties => ({
+  background: active ? "#E8734A" : "#1E1E1E",
+  color: active ? "#0D0D0D" : "#8A8480",
+  border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 999,
+  padding: "6px 14px",
+  fontSize: 12,
+  transition: "all .15s",
+});
 
 export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsResource, onCreated }: Props) => {
   const { user, profile, isAdmin } = useAuth();
@@ -55,7 +70,6 @@ export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsRe
   useEffect(() => { setIsResource(!!defaultIsResource); }, [defaultIsResource, open]);
   useEffect(() => { if (defaultChannelId) setChannelId(defaultChannelId); }, [defaultChannelId, open]);
 
-  // YouTube oEmbed thumbnail + title
   useEffect(() => {
     if (type !== "video" || !url.trim()) { setYtPreview(null); return; }
     const handle = setTimeout(async () => {
@@ -98,8 +112,6 @@ export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsRe
 
     const isMemberRequestingPublic = visibility === "public" && !isAdmin;
     const insertVisibility = isMemberRequestingPublic ? "community" : visibility;
-
-    // url field stores either the link OR the uploaded image url
     const finalUrl = url.trim() || imageUrl || null;
 
     const { data: created, error } = await supabase.from("posts").insert({
@@ -143,38 +155,63 @@ export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsRe
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
-      <DialogContent className="bg-surface border-0 hairline max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="border-0 max-w-xl max-h-[90vh] overflow-y-auto"
+        style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}
+      >
         <DialogHeader>
-          <DialogTitle className="font-normal">new post</DialogTitle>
+          <DialogTitle className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>new post</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {TYPES.map(({ v, i: Icon, l }) => (
-              <button key={v} onClick={() => setType(v)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono hairline transition-colors ${
-                  type === v ? "bg-primary/10 text-primary border-primary/30" : "hover:bg-surface-elevated text-muted-foreground"
-                }`}>
-                <Icon className="h-3.5 w-3.5" /> {l}
-              </button>
-            ))}
+          {/* Type pills — solid coral when active */}
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>type</p>
+            <div className="flex flex-wrap gap-1.5">
+              {TYPES.map(({ v, i: Icon, l }) => (
+                <button
+                  key={v}
+                  onClick={() => setType(v)}
+                  className="flex items-center gap-1.5 font-mono"
+                  style={PillStyle(type === v)}
+                >
+                  <Icon className="h-3.5 w-3.5" /> {l}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="title (optional)"
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="title (optional)"
             maxLength={200}
-            className="w-full bg-background hairline rounded-lg px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
+          />
 
-          <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="what's on your mind?"
-            rows={5} maxLength={5000}
-            className="w-full bg-background hairline rounded-lg px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="what's on your mind?"
+            rows={5}
+            maxLength={5000}
+            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
+          />
 
           {type !== "text" && (
             <div className="space-y-2">
-              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://"
-                className="w-full bg-background hairline rounded-lg px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://"
+                className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
+              />
               {type === "video" && ytPreview && (
-                <div className="rounded-lg overflow-hidden hairline">
+                <div className="overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8 }}>
                   <img src={ytPreview.thumb} alt={ytPreview.title} className="w-full" />
-                  <div className="px-3 py-2 text-xs bg-surface-elevated">{ytPreview.title}</div>
+                  <div className="px-3 py-2 text-xs" style={{ background: "#1E1E1E", color: "#F5F0EB" }}>{ytPreview.title}</div>
                 </div>
               )}
             </div>
@@ -182,17 +219,20 @@ export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsRe
 
           {/* Image upload */}
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground block mb-2">image (optional)</label>
+            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>image (optional)</p>
             {imageUrl ? (
               <div className="relative inline-block">
-                <img src={imageUrl} alt="" className="max-h-40 rounded-lg hairline" />
-                <button onClick={() => setImageUrl(null)}
-                  className="absolute top-1 right-1 h-6 w-6 rounded-full bg-background/80 flex items-center justify-center">
-                  <X className="h-3 w-3" />
+                <img src={imageUrl} alt="" className="max-h-40" style={{ borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }} />
+                <button
+                  onClick={() => setImageUrl(null)}
+                  className="absolute top-1 right-1 h-6 w-6 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(13,13,13,0.85)" }}
+                >
+                  <X className="h-3 w-3" style={{ color: "#F5F0EB" }} />
                 </button>
               </div>
             ) : (
-              <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono hairline hover:bg-surface-elevated">
+              <label className="cursor-pointer inline-flex items-center gap-2 font-mono" style={PillStyle(false)}>
                 <input type="file" accept="image/*" onChange={onImageUpload} className="hidden" disabled={uploading} />
                 {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
                 {uploading ? "uploading…" : "upload image"}
@@ -200,31 +240,48 @@ export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsRe
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">visibility</p>
-              <div className="flex flex-wrap gap-2">
-                <VisChip active={visibility === "community"} onClick={() => setVisibility("community")} icon={Users} label="community" />
-                <VisChip active={visibility === "public"} onClick={() => setVisibility("public")} icon={Globe} label="public" />
-                {isAdmin && <VisChip active={visibility === "private"} onClick={() => setVisibility("private")} icon={Lock} label="private" />}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">channel</p>
-              <select value={channelId} onChange={(e) => setChannelId(e.target.value)}
-                className="w-full bg-background hairline rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary">
-                {channels.map((c) => <option key={c.id} value={c.id}>{c.name.toLowerCase()}</option>)}
-              </select>
+          {/* Visibility pills */}
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>visibility</p>
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => setVisibility("community")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "community")}>
+                <Users className="h-3 w-3" /> community
+              </button>
+              <button onClick={() => setVisibility("public")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "public")}>
+                <Globe className="h-3 w-3" /> public
+              </button>
+              {isAdmin && (
+                <button onClick={() => setVisibility("private")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "private")}>
+                  <Lock className="h-3 w-3" /> private
+                </button>
+              )}
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-xs font-mono text-muted-foreground cursor-pointer">
+          {/* Channel pills */}
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>channel</p>
+            <div className="flex flex-wrap gap-1.5">
+              {channels.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setChannelId(c.id)}
+                  className="flex items-center gap-1.5 font-mono"
+                  style={PillStyle(channelId === c.id)}
+                >
+                  <span>{CHANNEL_EMOJI[c.slug] ?? "•"}</span> {c.name.toLowerCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs font-mono cursor-pointer" style={{ color: "#8A8480" }}>
             <input type="checkbox" checked={isResource} onChange={(e) => setIsResource(e.target.checked)} />
             save to resources tab (curated)
           </label>
 
           {visibility === "public" && !isAdmin && (
-            <p className="text-[11px] text-muted-foreground font-mono">
+            <p className="text-[11px] font-mono" style={{ color: "#8A8480" }}>
               public posts need admin approval. saved as community until approved.
             </p>
           )}
@@ -237,12 +294,3 @@ export const PostComposer = ({ open, onOpenChange, defaultChannelId, defaultIsRe
     </Dialog>
   );
 };
-
-const VisChip = ({ active, onClick, icon: Icon, label }: any) => (
-  <button onClick={onClick}
-    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono hairline transition-colors ${
-      active ? "bg-primary/10 text-primary border-primary/30" : "hover:bg-surface-elevated text-muted-foreground"
-    }`}>
-    <Icon className="h-3 w-3" /> {label}
-  </button>
-);
