@@ -22,7 +22,7 @@ const ICONS: Record<string, { icon: any; color: string }> = {
 
 const ChannelPage = () => {
   const { slug } = useParams();
-  const { user, profile, isAdmin, loading } = useAuth();
+  const { user, profile, isAdmin, loading, profileLoading } = useAuth();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -72,7 +72,7 @@ const ChannelPage = () => {
     toast.success("request sent to author");
   };
 
-  if (loading) return <AppLayout><div className="p-10 text-muted-foreground font-mono text-sm">loading…</div></AppLayout>;
+  if (loading || profileLoading) return <AppLayout><div className="p-10 text-muted-foreground font-mono text-sm">loading…</div></AppLayout>;
   if (notFound) return <Navigate to="/home" replace />;
   if (!channel) return <div className="min-h-screen p-10 text-muted-foreground font-mono text-sm">loading…</div>;
 

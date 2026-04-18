@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
  * wrap themselves in <AppLayout/> — only logged-in app pages do.
  */
 export const AppLayout = ({ children }: { children: ReactNode }) => {
-  const { user, profile, isAdmin, loading, signOut } = useAuth();
+  const { user, profile, isAdmin, loading, profileLoading, signOut } = useAuth();
   const location = useLocation();
   const [unread, setUnread] = useState(0);
 
@@ -39,7 +39,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     return () => { supabase.removeChannel(ch); };
   }, [user, location.pathname]);
 
-  if (loading && !user) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
+  if ((loading || profileLoading) && !user) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
 
   return (

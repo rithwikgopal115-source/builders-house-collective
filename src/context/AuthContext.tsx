@@ -17,7 +17,8 @@ interface AuthCtx {
   session: Session | null;
   profile: ProfileLite | null;
   isAdmin: boolean;
-  loading: boolean;
+  loading: boolean;        // true until we know if user is signed in or out
+  profileLoading: boolean; // true while fetching the profile row from DB
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -30,66 +31,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ProfileLite | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);       // auth-state phase
+  const [profileLoading, setProfileLoading] = useState(false); // profile-fetch phase
 
-const loadProfile = async (uid: string): Promise<void> => {
-  const { data: p, error } = await supabase
-    .from("profiles")
-    .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
-    .eq("id", uid)
-    .maybeSingle();
-  if (error) return; // query failed — preserve existing profile, don't wipe it
-  if (p) {
-    setProfile(p as ProfileLite);
-    setIsAdmin(!!p.is_admin);
-  } else {
-    setProfile(null);
-    setIsAdmin(false);
-  }
-};
+  const loadProfile = async (uid: string): Promise<void> => {
+    setProfileLoading(true);
+    try {
+      const { data: p, error } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url, is_approved, is_admin, bio, what_building")
+        .eq("id", uid)
+        .maybeSingle();
+      if (error) return; // preserve existing profile on error
+      if (p) {
+        setProfile(p as ProfileLite);
+        setIsAdmin(!!p.is_admin);
+      } else {
+        setProfile(null);
+        setIsAdmin(false);
+      }
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   useEffect(() => {
     let initialized = false;
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
-  try {
-    setSession(sess);
-    setUser(sess?.user ?? null);
-    if (sess?.user) {
-      await loadProfile(sess.user.id);
-    } else {
-      setProfile(null);
-      setIsAdmin(false);
-    }
-  } catch (e) {
-    console.error("auth state change error", e);
-  } finally {
-    if (!initialized) {
-      initialized = true;
-      setLoading(false);
-    }
-  }
-});
-    // Fallback: if onAuthStateChange hasn't fired yet, getSession initializes fully.
-    // Whichever resolves first wins via the `initialized` flag.
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (initialized) return; // onAuthStateChange already handled it
-      initialized = true;
-      try {
-        setSession(s);
-        setUser(s?.user ?? null);
-        if (s?.user) {
-          await loadProfile(s.user.id);
-        } else {
-          setProfile(null);
-          setIsAdmin(false);
-        }
-      } finally {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      if (!sess?.user) {
+        setProfile(null);
+        setIsAdmin(false);
+      } else {
+        // Fire profile fetch in the background — do NOT await
+        loadProfile(sess.user.id);
+      }
+      // Mark auth state as resolved immediately (no profile wait)
+      if (!initialized) {
+        initialized = true;
         setLoading(false);
       }
     });
 
-    // Hard timeout: if nothing resolved within 4s, unblock loading anyway
+    // Fallback: getSession resolves auth state if onAuthStateChange is slow
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      if (initialized) return; // already handled by onAuthStateChange
+      initialized = true;
+      setSession(s);
+      setUser(s?.user ?? null);
+      if (!s?.user) {
+        setProfile(null);
+        setIsAdmin(false);
+      } else {
+        loadProfile(s.user.id);
+      }
+      setLoading(false);
+    });
+
+    // Hard timeout — in case Supabase JS never fires (e.g. network totally down)
     const timeout = setTimeout(() => {
       if (!initialized) {
         initialized = true;
@@ -117,7 +118,7 @@ const loadProfile = async (uid: string): Promise<void> => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, isAdmin, loading, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, profile, profileLoading, isAdmin, loading, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

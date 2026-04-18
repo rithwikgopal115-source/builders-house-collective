@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const Login = () => {
-  const { user, profile, signIn, loading } = useAuth();
+  const { user, profile, signIn, loading, profileLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,10 +20,15 @@ const Login = () => {
     } catch (_) { /* ignore */ }
   }, []);
 
-if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
-if (!loading && user && !profile) return <Navigate to="/waiting" replace />;
-if (user && profile?.is_approved) return <Navigate to="/home" replace />;
-if (user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
+  if (loading || profileLoading) return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm" style={{ background: "#0D0D0D" }}>
+      loading…
+    </div>
+  );
+  if (user && profile?.is_approved) return <Navigate to="/home" replace />;
+  if (user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
+  if (user && !profile) return <Navigate to="/waiting" replace />;
+
 
   const submit = async () => {
     setBusy(true);

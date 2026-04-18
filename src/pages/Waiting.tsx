@@ -22,7 +22,7 @@ const BackLink = () => (
 );
 
 const Waiting = () => {
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, profile, loading, profileLoading, signOut } = useAuth();
   const [email, setEmail] = useState("");
   const [statusEmail, setStatusEmail] = useState<string | null>(null);
   const [request, setRequest] = useState<any>(null);
@@ -80,7 +80,7 @@ const Waiting = () => {
     }
   };
 
-  if (loading) return null;
+  if (loading || profileLoading) return null;
   if (user && profile?.is_approved) return <Navigate to="/home" replace />;
 
   if (!statusEmail) {
