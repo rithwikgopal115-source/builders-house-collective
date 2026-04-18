@@ -26,7 +26,15 @@ Deno.serve(async (req) => {
     const existing = list.users.find((u) => u.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     if (!existing) return json({ error: "admin not found" }, 404);
 
-    const password = genTempPassword();
+    let customPassword: string | null = null;
+    try {
+      const body = await req.json();
+      if (body && typeof body.password === "string" && body.password.length >= 8) {
+        customPassword = body.password;
+      }
+    } catch (_) { /* no body */ }
+
+    const password = customPassword ?? genTempPassword();
     await admin.auth.admin.updateUserById(existing.id, { password, email_confirm: true });
 
     // Ensure profile + role intact
