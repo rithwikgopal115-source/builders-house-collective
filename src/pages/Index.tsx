@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Lock, Star, Zap, Lightbulb, Music, Briefcase, Trophy, ArrowRight } from "lucide-react";
+import { Lock, Star, Zap, Lightbulb, Music, Briefcase, Trophy, ArrowRight, MessageCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const TILE_CONFIG: Record<string, { bg: string; fg: string; icon: any; label: string; glow?: boolean; locked?: boolean }> = {
@@ -20,6 +20,23 @@ const Index = () => {
   const { user, profile, loading } = useAuth();
   const [yoloMode, setYoloMode] = useState(false);
   const [lockedModal, setLockedModal] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // For logged-in but not-yet-approved users: fetch their message count
+  const fetchUnread = useCallback(async () => {
+    if (!user || profile?.is_approved) return;
+    const email = user.email;
+    if (!email) return;
+    const { data: req } = await supabase
+      .from("access_requests").select("id").eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (!req) return;
+    const { count } = await supabase
+      .from("onboarding_messages").select("*", { count: "exact", head: true })
+      .eq("request_id", req.id).eq("sender_type", "admin");
+    setUnreadCount(count ?? 0);
+  }, [user, profile]);
+
+  useEffect(() => { fetchUnread(); }, [fetchUnread]);
 
   useEffect(() => {
     document.title = "builders house — a private room for people who are building";
@@ -54,6 +71,25 @@ const Index = () => {
           </Link>
         </div>
       </nav>
+
+      {/* Notification banner for waiting candidates */}
+      {user && !profile?.is_approved && unreadCount > 0 && (
+        <div style={{ background: "rgba(232,115,74,0.1)", borderBottom: "1px solid rgba(232,115,74,0.2)" }}>
+          <div className="max-w-7xl mx-auto px-6 md:px-10 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm" style={{ color: "#E8734A" }}>
+              <MessageCircle className="h-4 w-4 flex-shrink-0" />
+              <span>you have {unreadCount} message{unreadCount > 1 ? "s" : ""} from the team</span>
+            </div>
+            <Link
+              to="/waiting"
+              className="text-xs font-mono uppercase tracking-wider transition-opacity hover:opacity-70"
+              style={{ color: "#E8734A" }}
+            >
+              view →
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 md:px-10 py-10 md:py-16">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8 items-start">
