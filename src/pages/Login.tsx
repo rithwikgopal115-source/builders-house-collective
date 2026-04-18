@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Navigate, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,16 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    try {
+      const err = sessionStorage.getItem("auth_error");
+      if (err) {
+        toast.error(err);
+        sessionStorage.removeItem("auth_error");
+      }
+    } catch (_) { /* ignore */ }
+  }, []);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
   if (user && profile?.is_approved) return <Navigate to="/home" replace />;

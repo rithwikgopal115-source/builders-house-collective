@@ -52,14 +52,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let initialized = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const clearProfileTimeout = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const startProfileTimeout = (uid: string) => {
+      clearProfileTimeout();
+      timeoutId = setTimeout(async () => {
+        const { data: p } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", uid)
+          .maybeSingle();
+        if (!p) {
+          await supabase.auth.signOut();
+          try {
+            sessionStorage.setItem("auth_error", "profile not found, contact admin.");
+          } catch (_) { /* ignore */ }
+          if (typeof window !== "undefined") {
+            window.location.href = "/login";
+          }
+        }
+      }, 5000);
+    };
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
       setSession(sess);
       setUser(sess?.user ?? null);
 
       if (sess?.user) {
+        startProfileTimeout(sess.user.id);
         await loadProfile(sess.user.id);
+        clearProfileTimeout();
       } else {
+        clearProfileTimeout();
         setProfile(null);
         setIsAdmin(false);
       }
@@ -78,7 +109,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      clearProfileTimeout();
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
