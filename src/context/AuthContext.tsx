@@ -91,7 +91,7 @@ const loadProfile = async (uid: string): Promise<void> => {
 
     // Hard timeout: if nothing resolved within 4s, unblock loading anyway
     const timeout = setTimeout(() => {
-      if (\!initialized) {
+      if (!initialized) {
         initialized = true;
         setLoading(false);
       }
