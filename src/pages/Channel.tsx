@@ -282,4 +282,19 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="say something…"
             className="flex-1 px-3 py-2 text-sm focus:outline-none"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", 
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB",             borderRadius: 8 }}
+          />
+          <button
+            onClick={send}
+            className="h-9 w-9 flex items-center justify-center transition-opacity hover:opacity-90"
+            style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8 }}
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </aside>
+  );
+};
+
+export default ChannelPage;
