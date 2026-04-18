@@ -24,15 +24,15 @@ const Index = () => {
   useEffect(() => {
     document.title = "builders house — a private room for people who are building";
     supabase.from("admin_settings").select("auto_yolo_enabled").eq("id", 1).maybeSingle()
-      .then(({ data }) => setYoloMode(\!\!data?.auto_yolo_enabled));
+      .then(({ data }) => setYoloMode(!!data?.auto_yolo_enabled));
   }, []);
 
-  if (\!loading && user && profile?.is_approved) return <Navigate to="/home" replace />;
-  if (\!loading && user && profile && \!profile.is_approved) return <Navigate to="/waiting" replace />;
+  if (!loading && user && profile?.is_approved) return <Navigate to="/home" replace />;
+  if (!loading && user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
   const handleTileClick = (slug: string) => {
     const cfg = TILE_CONFIG[slug];
-    if (\!cfg) return;
+    if (!cfg) return;
     if (cfg.locked) setLockedModal(slug);
     else nav(`/channel/${slug}`);
   };
@@ -98,7 +98,7 @@ const Index = () => {
       </div>
 
       {/* Locked channel modal */}
-      <Dialog open={\!\!lockedModal} onOpenChange={(o) => { if (\!o) setLockedModal(null); }}>
+      <Dialog open={!!lockedModal} onOpenChange={(o) => { if (!o) setLockedModal(null); }}>
         <DialogContent
           className="border-0 max-w-sm"
           style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}
@@ -145,7 +145,7 @@ const Tile = ({
   slug, onClick, className = "", big,
 }: { slug: string; onClick: (s: string) => void; className?: string; big?: boolean }) => {
   const cfg = TILE_CONFIG[slug];
-  if (\!cfg) return null;
+  if (!cfg) return null;
   const Icon = cfg.icon;
   return (
     <button
@@ -190,7 +190,7 @@ const RequestAccessPanel = () => {
   const [busy, setBusy]         = useState(false);
 
   const submit = async () => {
-    if (\!name.trim() || \!email.trim() || \!building.trim()) {
+    if (!name.trim() || !email.trim() || !building.trim()) {
       toast.error("fill in all three fields");
       return;
     }
@@ -317,7 +317,7 @@ const YoloPanel = () => {
   const [busy, setBusy]         = useState(false);
 
   const yolo = async () => {
-    if (\!name.trim() || \!email.trim() || \!building.trim()) {
+    if (!name.trim() || !email.trim() || !building.trim()) {
       toast.error("fill in all three fields");
       return;
     }
