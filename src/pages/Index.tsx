@@ -290,4 +290,3 @@ const PanelInput = ({ value, onChange, placeholder, type = "text" }: any) => (
 );
 
 export default Index;
-                                                                                                                   
