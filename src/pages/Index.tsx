@@ -26,7 +26,11 @@ interface ChannelIds { [slug: string]: string }
 const Index = () => {
   const nav = useNavigate();
   const { user, profile, loading } = useAuth();
-  const [showVideo, setShowVideo] = useState(true);
+  const [showVideo, setShowVideo] = useState(() => !sessionStorage.getItem("bh-video-seen"));
+  const dismissVideo = () => {
+    sessionStorage.setItem("bh-video-seen", "1");
+    setShowVideo(false);
+  };
   const [channelIds, setChannelIds] = useState<ChannelIds>({});
   const [yoloMode, setYoloMode] = useState(false);
   const [lockedModal, setLockedModal] = useState<string | null>(null);
@@ -91,14 +95,18 @@ const Index = () => {
 
       {/* Video overlay — appears on every page load, no persistent dismiss */}
       {showVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.92)" }}>
-          <div className="w-full max-w-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.92)" }}
+          onClick={dismissVideo}
+        >
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-xl md:text-2xl font-medium mb-5 text-center" style={{ color: "#F5F0EB" }}>what is builders house?</h2>
             <div className="aspect-video rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
               <iframe src={PLACEHOLDER_VIDEO} className="w-full h-full" allowFullScreen title="builders house" />
             </div>
             <div className="mt-5 text-center">
-              <button onClick={() => setShowVideo(false)} className="text-sm hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>
+              <button onClick={dismissVideo} className="text-sm hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>
                 skip for now →
               </button>
             </div>
