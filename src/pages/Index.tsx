@@ -187,6 +187,7 @@ const RequestAccessPanel = () => {
   const [email, setEmail]       = useState("");
   const [building, setBuilding] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [stage, setStage]       = useState<"figuring" | "shipping" | "">(""); 
   const [busy, setBusy]         = useState(false);
 
   const submit = async () => {
@@ -199,7 +200,9 @@ const RequestAccessPanel = () => {
       const { error } = await supabase.from("access_requests").insert({
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        what_building: building.trim(),
+        what_building: stage
+          ? `[${stage === "figuring" ? "still figuring it out" : "shipping & making money"}] ${building.trim()}`
+          : building.trim(),
       } as any);
       if (error) { toast.error(error.message); return; }
 
@@ -285,6 +288,28 @@ const RequestAccessPanel = () => {
               borderRadius: 10,
             }}
           />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {(["figuring", "shipping"] as const).map((v) => {
+            const label = v === "figuring" ? "still figuring it out" : "shipping & making money";
+            const active = stage === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setStage(active ? "" : v)}
+                className="text-left px-3 py-2.5 text-xs transition-colors"
+                style={{
+                  background: active ? "#1E1E1E" : "#0D0D0D",
+                  border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+                  color: active ? "#E8734A" : "#8A8480",
+                  borderRadius: 10,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
         <button
           onClick={submit}
