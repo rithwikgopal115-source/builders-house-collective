@@ -200,7 +200,6 @@ const RequestAccessPanel = () => {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         what_building: building.trim(),
-        requested_tier: "learner",
       } as any);
       if (error) { toast.error(error.message); return; }
 
