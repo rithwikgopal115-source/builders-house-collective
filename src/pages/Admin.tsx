@@ -355,4 +355,14 @@ const ChannelAdminRow = ({ channel }: { channel: any }) => {
           <div key={p.id} className="flex items-center gap-2 text-sm">
             <span className="flex-1 truncate" style={{ color: "#F5F0EB" }}>{p.title || p.content?.slice(0, 60)}</span>
             <span className="text-[10px] font-mono uppercase" style={{ color: "#8A8480" }}>{p.visibility}</span>
-            <PillBtn variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>{p.is_pinned 
+            <PillBtn variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>{p.is_pinned ? "unpin" : "pin"}</PillBtn>
+            <PillBtn variant="ghost" onClick={() => remove(p.id)}>×</PillBtn>
+          </div>
+        ))}
+        {recent.length === 0 && <p className="text-xs font-mono" style={{ color: "#8A8480" }}>no posts</p>}
+      </div>
+    </div>
+  );
+};
+
+export default Admin;

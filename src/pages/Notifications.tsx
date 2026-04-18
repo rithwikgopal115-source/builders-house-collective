@@ -35,7 +35,7 @@ const Notifications = () => {
   }, [user]);
 
   const load = async () => {
-    if (!user) return;
+    if (\!user) return;
     const { data } = await supabase
       .from("notifications")
       .select("*")
@@ -150,4 +150,7 @@ function timeAgo(iso: string | null) {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(is
+  return new Date(iso).toLocaleDateString();
+}
+
+export default Notifications;

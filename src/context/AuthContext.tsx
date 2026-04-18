@@ -107,4 +107,15 @@ const loadProfile = async (uid: string): Promise<void> => {
     if (user) await loadProfile(user.id);
   };
 
-  
+  return (
+    <AuthContext.Provider value={{ user, session, profile, isAdmin, loading, signIn, signOut, refreshProfile }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  return ctx;
+};
