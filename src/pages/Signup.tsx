@@ -52,7 +52,15 @@ const Signup = () => {
         options: { data: { display_name: name.trim() } },
       });
 
-      if (error) { toast.error(error.message); return; }
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
+          toast.error("an account already exists for this email — go to login instead");
+        } else {
+          toast.error(error.message);
+        }
+        return;
+      }
 
       if (data.session) {
         await supabase.rpc("claim_approved_access");
@@ -137,7 +145,7 @@ const Signup = () => {
             <button onClick={submit} disabled={busy}
               className="w-full py-3 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50 mt-2"
               style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10 }}>
-              {busy ? "creating account..." : "create account ->"}
+              {busy ? "creating account..." : "create account &rarr;"}
             </button>
           </div>
 

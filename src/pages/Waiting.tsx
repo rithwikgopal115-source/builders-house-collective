@@ -144,7 +144,7 @@ const Waiting = () => {
               <Link to="/signup">
                 <button className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
                   style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8, whiteSpace: "nowrap" }}>
-                  create your account ->
+                  create your account &rarr;
                 </button>
               </Link>
             )}

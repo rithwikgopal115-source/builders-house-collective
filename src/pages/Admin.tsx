@@ -268,7 +268,7 @@ const Admin = () => {
   );
 };
 
-const DmThread = ({ request, onClose, onApprove, onReject }: any) => {
+const DmThread = ({ request, onClose, onApprove, onApproveSelf, onReject }: any) => {
   const [messages, setMessages] = useState<any[]>([]);
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -334,9 +334,12 @@ const DmThread = ({ request, onClose, onApprove, onReject }: any) => {
             style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           <Button size="icon" onClick={send}><Send className="h-4 w-4" /></Button>
         </div>
-        <div className="flex gap-2 pt-3 mt-3 justify-end" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="flex gap-2 pt-3 mt-3 justify-between flex-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <PillBtn variant="ghost" onClick={() => { onReject(request); onClose(); }}>reject</PillBtn>
-          <PillBtn variant="primary" onClick={() => { onApprove(request); onClose(); }}>approve as builder</PillBtn>
+          <div className="flex gap-2">
+            <PillBtn variant="ghost" icon={Zap} onClick={() => { onApprove(request); onClose(); }}>yolo onboard</PillBtn>
+            <PillBtn variant="primary" icon={Check} onClick={() => { onApproveSelf(request); onClose(); }}>approve &rarr; self-signup</PillBtn>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
