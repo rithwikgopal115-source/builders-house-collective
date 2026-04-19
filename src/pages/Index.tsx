@@ -384,17 +384,15 @@ const YoloPanel = () => {
   const yolo = async () => {
     if (!name.trim() || !email.trim() || !building.trim()) { toast.error("name, email, what you're building"); return; }
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("yolo-onboard", {
-      body: { name: name.trim(), email: email.trim().toLowerCase(), what_building: building.trim() },
+    const { error } = await supabase.rpc("yolo_request", {
+      p_name: name.trim(),
+      p_email: email.trim().toLowerCase(),
+      p_what_building: building.trim(),
     });
     setBusy(false);
-    if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); return; }
-    if (data?.password) {
-      const { error: signErr } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: data.password });
-      if (signErr) { toast.error(signErr.message); return; }
-      toast.success("you're in.");
-      nav("/home");
-    }
+    if (error) { toast.error(error.message); return; }
+    try { localStorage.setItem("bh-pending-email", email.trim().toLowerCase()); } catch {}
+    nav(`/signup?email=${encodeURIComponent(email.trim().toLowerCase())}`);
   };
 
   if (step === "no") return (
