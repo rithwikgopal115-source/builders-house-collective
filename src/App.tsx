@@ -6,7 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/context/AuthContext";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Waiting from "./pages/Waiting";
+import Signup from "./pages/Signup";
 import Home from "./pages/Home";
 import Channel from "./pages/Channel";
 import Profile from "./pages/Profile";
@@ -14,7 +17,6 @@ import ProfileEdit from "./pages/ProfileEdit";
 import Admin from "./pages/Admin";
 import Tasks from "./pages/Tasks";
 import Notifications from "./pages/Notifications";
-import Signup from "./pages/Signup";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,9 +31,11 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/waiting" element={<Waiting />} />
-            <Route path="/signup" element={<Signup />} />
             <Route path="/pending" element={<Waiting />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="/home" element={<Home />} />
             <Route path="/channel/:slug" element={<Channel />} />
             <Route path="/profile/edit" element={<ProfileEdit />} />
