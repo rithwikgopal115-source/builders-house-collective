@@ -1,24 +1,14 @@
-import { Check,
- useEffect, useState, useRef } from "react";
-import { Check,
- AppLayout } from "@/components/AppLayout";
-import { Check,
- useAuth } from "@/context/AuthContext";
-import { Check,
- Navigate } from "react-router-dom";
-import { Check,
- Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check,
- supabase } from "@/integrations/supabase/client";
-import { Check,
- Button } from "@/components/ui/button";
-import { Check,
- toast } from "sonner";
-import { Check,
- AvatarBlock } from "@/components/AvatarBlock";
-import { Check,
- Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Check, MessageSquare, Zap, Send } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { AppLayout } from "@/components/AppLayout";
+import { useAuth } from "@/context/AuthContext";
+import { Navigate } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { AvatarBlock } from "@/components/AvatarBlock";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { MessageSquare, Zap, Send } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 const PillBtn = ({
@@ -55,7 +45,7 @@ const Admin = () => {
     const [{ data: r }, { data: m }, { data: c }, { data: s }] = await Promise.all([
       supabase.from("access_requests").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").eq("is_approved", true).order("created_at", { ascending: false }),
-      supabase.from("channels").select("id, slug, name").order("sort_order"),
+      supabase.from("channels").select("id, slug, name, is_public_visible").order("sort_order"),
       supabase.from("admin_settings").select("auto_yolo_enabled").eq("id", 1).maybeSingle(),
     ]);
     setRequests(r ?? []);
@@ -83,14 +73,6 @@ const Admin = () => {
     if (error) { toast.error(error.message); return; }
     if (data?.error) { toast.error(data.error); return; }
     if (data?.password) setCredentialModal({ email: request.email, password: data.password });
-    loadAll();
-  };
-
-
-  const approve = async (request: any) => {
-    const { error } = await supabase.from("access_requests").update({ status: "approved" }).eq("id", request.id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("approved — they can now sign up at /signup");
     loadAll();
   };
 
@@ -203,7 +185,6 @@ const Admin = () => {
                     ) : (
                       <div className="flex gap-1.5 flex-wrap">
                         <PillBtn variant="ghost" icon={MessageSquare} onClick={() => setDmRequest(r)}>dm first</PillBtn>
-                        <PillBtn variant="ghost" icon={Check} onClick={() => approve(r)}>approve</PillBtn>
                         <PillBtn variant="primary" icon={Zap} onClick={() => yoloOnboard(r)}>yolo onboard</PillBtn>
                         <PillBtn variant="ghost" onClick={() => reject(r)}>reject</PillBtn>
                       </div>
@@ -244,7 +225,7 @@ const Admin = () => {
           </TabsContent>
         </Tabs>
 
-        <DmThread request={dmRequest} onClose={() => { setDmRequest(null); loadAll(); }} onApprove={(req) => yoloOnboard(req)} onApproveSelf={(req) => approve(req)} onReject={reject} />
+        <DmThread request={dmRequest} onClose={() => { setDmRequest(null); loadAll(); }} onApprove={(req) => yoloOnboard(req)} onReject={reject} />
 
         <Dialog open={!!credentialModal} onOpenChange={(o) => !o && setCredentialModal(null)}>
           <DialogContent style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
@@ -266,7 +247,7 @@ const Admin = () => {
   );
 };
 
-const DmThread = ({ request, onClose, onApprove, onApproveSelf, onReject }: any) => {
+const DmThread = ({ request, onClose, onApprove, onReject }: any) => {
   const [messages, setMessages] = useState<any[]>([]);
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -332,12 +313,9 @@ const DmThread = ({ request, onClose, onApprove, onApproveSelf, onReject }: any)
             style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           <Button size="icon" onClick={send}><Send className="h-4 w-4" /></Button>
         </div>
-        <div className="flex gap-2 pt-3 mt-3 justify-between flex-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="flex gap-2 pt-3 mt-3 justify-end" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <PillBtn variant="ghost" onClick={() => { onReject(request); onClose(); }}>reject</PillBtn>
-          <div className="flex gap-2">
-            <PillBtn variant="ghost" icon={Zap} onClick={() => { onApprove(request); onClose(); }}>yolo onboard</PillBtn>
-            <PillBtn variant="primary" icon={Check} onClick={() => { onApproveSelf(request); onClose(); }}>approve &rarr; self-signup</PillBtn>
-          </div>
+          <PillBtn variant="primary" onClick={() => { onApprove(request); onClose(); }}>approve as builder</PillBtn>
         </div>
       </DialogContent>
     </Dialog>
@@ -347,12 +325,20 @@ const DmThread = ({ request, onClose, onApprove, onApproveSelf, onReject }: any)
 const ChannelAdminRow = ({ channel }: { channel: any }) => {
   const [count, setCount] = useState<number>(0);
   const [recent, setRecent] = useState<any[]>([]);
+  const [isPublic, setIsPublic] = useState<boolean>(!!channel.is_public_visible);
 
   const load = () => {
     supabase.from("posts").select("*", { count: "exact", head: true }).eq("channel_id", channel.id).then(({ count }) => setCount(count ?? 0));
     supabase.from("posts").select("id, title, content, is_pinned, created_at, visibility").eq("channel_id", channel.id).order("created_at", { ascending: false }).limit(5).then(({ data }) => setRecent(data ?? []));
   };
   useEffect(load, [channel.id]);
+
+  const togglePublic = async (val: boolean) => {
+    setIsPublic(val);
+    const { error } = await supabase.from("channels").update({ is_public_visible: val }).eq("id", channel.id);
+    if (error) { toast.error(error.message); setIsPublic(!val); return; }
+    toast.success(val ? `${channel.name} is now public` : `${channel.name} is now members-only`);
+  };
 
   const togglePin = async (postId: string, current: boolean) => {
     await supabase.from("posts").update({ is_pinned: !current }).eq("id", postId);
@@ -370,7 +356,13 @@ const ChannelAdminRow = ({ channel }: { channel: any }) => {
     <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 20 }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>{channel.name.toLowerCase()}</h3>
-        <span className="text-xs font-mono" style={{ color: "#8A8480" }}>{count} posts</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: isPublic ? "#1B9A6A" : "#8A8480" }}>
+            {isPublic ? "public" : "members only"}
+          </span>
+          <Switch checked={isPublic} onCheckedChange={togglePublic} />
+          <span className="text-xs font-mono" style={{ color: "#8A8480" }}>{count} posts</span>
+        </div>
       </div>
       <div className="space-y-2">
         {recent.map((p) => (
