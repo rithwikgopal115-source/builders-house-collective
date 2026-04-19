@@ -35,9 +35,9 @@ const Index = () => {
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
 
   const dismissVideo = () => {
-    sessionStorage.setItem("bh-video-seen", "1");
-    setShowVideo(false);
-  };
+  try { localStorage.setItem("bh-video-seen", "1"); } catch {}
+  setShowVideo(false);
+};
 
   useEffect(() => {
     document.title = "builders house — a private room for people who are building";
