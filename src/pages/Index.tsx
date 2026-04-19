@@ -22,7 +22,9 @@ const TILE_CONFIG: Record<string, { bg: string; fg: string; icon: any; label: st
 const Index = () => {
   const nav = useNavigate();
   const { user, profile, loading } = useAuth();
-  const [showVideo, setShowVideo] = useState(() => !sessionStorage.getItem("bh-video-seen"));
+  const [showVideo, setShowVideo] = useState(() => {
+  try { return !localStorage.getItem("bh-video-seen"); } catch { return false; }
+});
   const [yoloMode, setYoloMode] = useState(false);
   const [lockedModal, setLockedModal] = useState<string | null>(null);
   // Returning visitor state
