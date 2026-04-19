@@ -101,9 +101,9 @@ const Index = () => {
         <div className="fade-up max-w-3xl mx-auto">
           <p className="text-xs font-mono uppercase tracking-widest mb-6 opacity-50">builders house</p>
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-medium leading-[1.08] mb-6" style={{ letterSpacing: "-0.04em" }}>
-            you're not lazy.
+            where a-players connect,
             <br />
-            <span className="gradient-text">you're under-directed.</span>
+            <span className="gradient-text">communicate, and share.</span>
           </h1>
           <p className="text-base md:text-lg max-w-xl mx-auto mb-10 leading-relaxed" style={{ color: "#8A8480" }}>
             a small, private room for founders and builders who are actually shipping something — not just talking about it.
