@@ -6,8 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/context/AuthContext";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
 import Waiting from "./pages/Waiting";
 import Signup from "./pages/Signup";
 import Home from "./pages/Home";
@@ -18,6 +16,8 @@ import Admin from "./pages/Admin";
 import Tasks from "./pages/Tasks";
 import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -31,8 +31,6 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/waiting" element={<Waiting />} />
             <Route path="/pending" element={<Waiting />} />
             <Route path="/signup" element={<Signup />} />
@@ -43,6 +41,8 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
