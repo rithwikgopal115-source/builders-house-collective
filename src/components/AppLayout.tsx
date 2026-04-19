@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
-import { Navigate, Link, useLocation } from "react-router-dom";
+import { Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Bell, LogOut, Shield } from "lucide-react";
 import { AvatarBlock } from "./AvatarBlock";
@@ -13,9 +13,15 @@ import { supabase } from "@/integrations/supabase/client";
  * wrap themselves in <AppLayout/> — only logged-in app pages do.
  */
 export const AppLayout = ({ children }: { children: ReactNode }) => {
-  const { user, profile, isAdmin, loading, profileLoading, signOut } = useAuth();
+  const { user, profile, isAdmin, loading, signOut } = useAuth();
   const location = useLocation();
+  const nav = useNavigate();
   const [unread, setUnread] = useState(0);
+
+  const handleSignOut = async () => {
+    await signOut();
+    nav("/");
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -39,8 +45,8 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     return () => { supabase.removeChannel(ch); };
   }, [user, location.pathname]);
 
-  if ((loading || profileLoading) && !user) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
+  if (!user) return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
@@ -92,7 +98,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           )}
 
           <button
-            onClick={signOut}
+            onClick={handleSignOut}
             aria-label="log out"
             className="h-9 w-9 flex items-center justify-center rounded-md transition-colors hover:bg-white/5"
           >
