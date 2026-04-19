@@ -17,8 +17,13 @@ const ForgotPassword = () => {
       redirectTo: "https://builders-house-collective.vercel.app/reset-password",
     });
     setBusy(false);
-    if (error) { toast.error(error.message); return; }
-    setSent(true);
+    if (error) {
+  const msg = error.message.toLowerCase();
+  if (msg.includes("rate") || msg.includes("limit") || msg.includes("over_email")) {
+    setSent(true); return; // treat rate limit as sent
+  }
+  toast.error(error.message); return;
+}
   };
 
   return (
