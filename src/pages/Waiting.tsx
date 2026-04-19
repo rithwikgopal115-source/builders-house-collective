@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Send, ArrowLeft } from "lucide-react";
-import { Navigate, Link } from "react-router-dom";
+import { Navigate, Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 interface Msg { id: string; sender_type: string; content: string; created_at: string | null; }
@@ -22,9 +22,10 @@ const BackLink = () => (
 );
 
 const Waiting = () => {
-  const { user, profile, loading, profileLoading, signOut } = useAuth();
+  const { user, profile, loading, signOut } = useAuth();
+  const nav = useNavigate();
   const [email, setEmail] = useState("");
-  // Auto-load from localStorage so returning visitors skip the email input form
+  // Pre-fill from localStorage if the visitor requested access earlier
   const [statusEmail, setStatusEmail] = useState<string | null>(() => {
     try { return localStorage.getItem("bh-pending-email"); } catch { return null; }
   });
@@ -48,6 +49,8 @@ const Waiting = () => {
     setChecking(false);
     if (!data) { toast.error("no request found for that email"); return; }
     setRequest(data);
+    // Persist so banner shows on landing next visit
+    try { localStorage.setItem("bh-pending-email", e.toLowerCase()); } catch {}
     const { data: msgs } = await supabase.from("onboarding_messages").select("*").eq("request_id", data.id).order("created_at", { ascending: true });
     setMessages(msgs ?? []);
   };
@@ -83,7 +86,7 @@ const Waiting = () => {
     }
   };
 
-  if (loading || profileLoading) return null;
+  if (loading) return null;
   if (user && profile?.is_approved) return <Navigate to="/home" replace />;
 
   if (!statusEmail) {
@@ -94,14 +97,10 @@ const Waiting = () => {
           <h1 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>waiting room</h1>
           <p className="text-sm mb-6" style={{ color: "#8A8480" }}>enter the email you applied with.</p>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email" type="email"
-            onKeyDown={(e) => { if (e.key === "Enter") { const v = email.trim().toLowerCase(); localStorage.setItem("bh-pending-email", v); setStatusEmail(v); } }}
+            onKeyDown={(e) => e.key === "Enter" && setStatusEmail(email.trim())}
             className="w-full px-3 py-2.5 text-sm mb-3"
             style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
-          <Button onClick={() => {
-            const e = email.trim().toLowerCase();
-            localStorage.setItem("bh-pending-email", e);
-            setStatusEmail(e);
-          }} className="w-full">check status</Button>
+          <Button onClick={() => setStatusEmail(email.trim())} className="w-full">check status</Button>
         </div>
       </div>
     );
@@ -120,7 +119,7 @@ const Waiting = () => {
         <BackLink />
         <div className="text-center">
           <p className="text-sm mb-3" style={{ color: "#8A8480" }}>no application found.</p>
-          <Button variant="ghost" onClick={() => { localStorage.removeItem("bh-pending-email"); setStatusEmail(null); setEmail(""); }}>try another email</Button>
+          <Button variant="ghost" onClick={() => { setStatusEmail(null); setEmail(""); }}>try another email</Button>
         </div>
       </div>
     );
@@ -131,27 +130,30 @@ const Waiting = () => {
       <BackLink />
       <div className="w-full max-w-2xl overflow-hidden" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
         <div className="p-6" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: request.status === "approved" ? "#7AC8A0" : request.status === "rejected" ? "#E87474" : "#C9B99A" }} />
-              <h1 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
-                {request.status === "approved" ? "you have been approved." :
-                 request.status === "rejected" ? "your application was declined." :
-                 "your request is being reviewed."}
-              </h1>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="h-2 w-2 rounded-full flex-shrink-0 mt-1" style={{ background: request.status === "approved" ? "#7AC8A0" : request.status === "rejected" ? "#E87474" : "#C9B99A" }} />
+              <div>
+                <h1 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
+                  {request.status === "approved" ? "you're approved." :
+                   request.status === "rejected" ? "your application was declined." :
+                   "your request is being reviewed."}
+                </h1>
+                <p className="text-sm mt-0.5" style={{ color: "#8A8480" }}>
+                  {request.status === "pending" ? "admin will reach out before making a decision." :
+                   request.status === "approved" ? "create your account to get in." : ""}
+                </p>
+              </div>
             </div>
             {request.status === "approved" && (
-              <Link to="/signup">
-                <button className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
-                  style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8, whiteSpace: "nowrap" }}>
-                  create your account &rarr;
-                </button>
-              </Link>
+              <Button
+                onClick={() => nav(`/signup?email=${encodeURIComponent(statusEmail ?? "")}`)}
+                style={{ background: "#E8734A", color: "#0D0D0D", flexShrink: 0 }}
+              >
+                create account &rarr;
+              </Button>
             )}
           </div>
-          <p className="text-sm mt-1 ml-4" style={{ color: "#8A8480" }}>
-            {request.status === "pending" ? "admin will reach out before making a decision." : ""}
-          </p>
         </div>
 
         <div className="p-6 max-h-[400px] overflow-y-auto space-y-4" style={{ background: "#0D0D0D" }}>
@@ -187,7 +189,7 @@ const Waiting = () => {
         )}
 
         <div className="p-4 text-center" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          <button onClick={user ? signOut : () => { setStatusEmail(null); setEmail(""); }}
+          <button onClick={user ? signOut : () => { setStatusEmail(null); setEmail(""); try { localStorage.removeItem("bh-pending-email"); } catch {} }}
             className="text-xs font-mono" style={{ color: "#8A8480" }}>
             {user ? "sign out" : "use a different email"}
           </button>
