@@ -5,13 +5,6 @@ import { Bell, LogOut, Shield } from "lucide-react";
 import { AvatarBlock } from "./AvatarBlock";
 import { supabase } from "@/integrations/supabase/client";
 
-/**
- * Global shell — single top bar holds the wordmark left and all chrome right
- * (bell with unread dot, profile avatar, admin shield, logout).
- *
- * Pages with their own custom shell (landing, login, waiting) should NOT
- * wrap themselves in <AppLayout/> — only logged-in app pages do.
- */
 export const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, profile, isAdmin, loading, signOut } = useAuth();
   const location = useLocation();
@@ -50,7 +43,6 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
-      {/* Top bar — wordmark left, all chrome right */}
       <header
         className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-5 md:px-8 h-14"
         style={{ background: "#0D0D0D", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
