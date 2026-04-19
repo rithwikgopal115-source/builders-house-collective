@@ -366,3 +366,76 @@ const StageOption = ({ active, onClick, label }: any) => (
       background: active ? "#1E1E1E" : "#0D0D0D",
       border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
       color: active ? "#E8734A" :
+"#8A8480",
+      borderRadius: 8,
+    }}>
+    {label}
+  </button>
+);
+
+const YoloPanel = () => {
+  const nav = useNavigate();
+  const [step, setStep] = useState<"ask" | "yes" | "no">("ask");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [building, setBuilding] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const yolo = async () => {
+    if (!name.trim() || !email.trim() || !building.trim()) { toast.error("name, email, what you're building"); return; }
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("yolo-onboard", {
+      body: { name: name.trim(), email: email.trim().toLowerCase(), what_building: building.trim() },
+    });
+    setBusy(false);
+    if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); return; }
+    if (data?.password) {
+      const { error: signErr } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: data.password });
+      if (signErr) { toast.error(signErr.message); return; }
+      toast.success("you're in.");
+      nav("/home");
+    }
+  };
+
+  if (step === "no") return (
+    <div className="py-8 text-center">
+      <p className="text-lg font-medium mb-2" style={{ color: "#F5F0EB" }}>fair enough.</p>
+      <p className="text-sm" style={{ color: "#8A8480" }}>maybe another time.</p>
+    </div>
+  );
+
+  if (step === "yes") return (
+    <div>
+      <h2 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>cool. quick details.</h2>
+      <p className="text-xs font-mono mb-5" style={{ color: "#8A8480" }}>you'll be in immediately.</p>
+      <div className="space-y-3">
+        <PanelInput value={name} onChange={setName} placeholder="name" />
+        <PanelInput value={email} onChange={setEmail} placeholder="email" type="email" />
+        <textarea value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="what are you building?"
+          rows={3} className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none"
+          style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+        <Button onClick={yolo} disabled={busy} className="w-full">{busy ? "letting you in…" : "let me in"}</Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="py-6">
+      <h2 className="text-2xl font-medium mb-6 text-center" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>are you a cool person?</h2>
+      <div className="flex gap-3">
+        <button onClick={() => setStep("yes")} className="flex-1 py-3 text-sm font-medium"
+          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8 }}>yes</button>
+        <button onClick={() => setStep("no")} className="flex-1 py-3 text-sm font-medium"
+          style={{ background: "#1E1E1E", color: "#8A8480", borderRadius: 8 }}>no</button>
+      </div>
+    </div>
+  );
+};
+
+const PanelInput = ({ value, onChange, placeholder, type = "text" }: any) => (
+  <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} type={type}
+    className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
+    style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+);
+
+export default Index;
