@@ -3,41 +3,20 @@ import { Link, useNavigate, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Lock, Star, Zap, Lightbulb, Music, Briefcase, Trophy, Bell } from "lucide-react";
+import { Bell } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const PLACEHOLDER_VIDEO = "https://www.youtube.com/embed/dQw4w9WgXcQ";
 
-// Hardcoded tile config — Windows Phone live tiles, sharp 0-radius edges.
-const TILE_CONFIG: Record<string, { bg: string; fg: string; icon: any; label: string; glow?: boolean; locked?: boolean }> = {
-  "resources": { bg: "#E8734A", fg: "#0D0D0D", icon: Star,       label: "critical info", glow: true },
-  "ai-news":   { bg: "#1D6AE5", fg: "#FFFFFF", icon: Zap,         label: "ai news" },
-  "ideas":     { bg: "#F5C518", fg: "#1A1500", icon: Lightbulb,   label: "ideas" },
-  "vibing":    { bg: "#7C3AED", fg: "#FFFFFF", icon: Music,       label: "vibing", locked: true },
-  "hiring":    { bg: "#16A34A", fg: "#FFFFFF", icon: Briefcase,   label: "hiring", locked: true },
-  "wins":      { bg: "#EA580C", fg: "#FFFFFF", icon: Trophy,      label: "wins",   locked: true },
-};
-
 const Index = () => {
   const nav = useNavigate();
   const { user, profile, loading } = useAuth();
-  const [showVideo, setShowVideo] = useState(() => {
-  try { return !localStorage.getItem("bh-video-seen"); } catch { return false; }
-});
   const [yoloMode, setYoloMode] = useState(false);
-  const [lockedModal, setLockedModal] = useState<string | null>(null);
-  // Returning visitor state
   const [pendingEmail, setPendingEmail] = useState<string | null>(() => {
     try { return localStorage.getItem("bh-pending-email"); } catch { return null; }
   });
   const [unreadCount, setUnreadCount] = useState(0);
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
-
-  const dismissVideo = () => {
-  try { localStorage.setItem("bh-video-seen", "1"); } catch {}
-  setShowVideo(false);
-};
 
   useEffect(() => {
     document.title = "builders house — a private room for people who are building";
@@ -45,7 +24,6 @@ const Index = () => {
       .then(({ data }) => setYoloMode(!!data?.auto_yolo_enabled));
   }, []);
 
-  // Fetch returning visitor state from localStorage email
   useEffect(() => {
     if (!pendingEmail) return;
     const fetchStatus = async () => {
@@ -66,74 +44,124 @@ const Index = () => {
     fetchStatus();
   }, [pendingEmail]);
 
-if (!loading && user && !profile) return <Navigate to="/waiting" replace />;
-if (!loading && user && profile?.is_approved) return <Navigate to="/home" replace />;
-if (!loading && user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
-
-  const handleTileClick = (slug: string) => {
-    const cfg = TILE_CONFIG[slug];
-    if (!cfg) return;
-    if (cfg.locked) setLockedModal(slug);
-    else nav(`/channel/${slug}`);
-  };
+  if (!loading && user && !profile) return <Navigate to="/waiting" replace />;
+  if (!loading && user && profile?.is_approved) return <Navigate to="/home" replace />;
+  if (!loading && user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
   return (
-    <div className="min-h-screen relative" style={{ background: "#0D0D0D" }}>
-      {/* Top nav — wordmark routes to /home if logged in, else stays on / */}
-      <nav className="absolute top-0 inset-x-0 z-[60] px-6 md:px-10 py-5 flex items-center justify-between">
+    <div className="min-h-screen relative overflow-x-hidden" style={{ background: "#0D0D0D", color: "#F5F0EB" }}>
+
+      {/* ── Animated background orbs ──────────────────────────────────── */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
+        <div className="grain" />
+      </div>
+
+      {/* ── Nav ───────────────────────────────────────────────────────── */}
+      <nav className="fixed top-0 inset-x-0 z-[60] px-6 md:px-10 py-5 flex items-center justify-between"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", background: "rgba(13,13,13,0.6)" }}>
         <Link to={user ? "/home" : "/"} className="font-medium text-sm tracking-tight hover:text-primary transition-colors" style={{ color: "#F5F0EB" }}>
           builders house.
         </Link>
         {user ? (
-          <Link to="/home" className="text-xs font-mono uppercase tracking-wider hover:text-primary transition-colors" style={{ color: "#8A8480" }}>dashboard &rarr;</Link>
+          <Link to="/home" className="text-xs font-mono uppercase tracking-wider hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>dashboard &rarr;</Link>
         ) : (
-          <Link to="/login" className="text-xs font-mono uppercase tracking-wider hover:text-primary transition-colors" style={{ color: "#8A8480" }}>login</Link>
+          <Link to="/login" className="text-xs font-mono uppercase tracking-wider hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>login</Link>
         )}
       </nav>
 
-      {/* Returning visitor notification banner */}
+      {/* ── Returning visitor notification banner ─────────────────────── */}
       {!user && pendingEmail && (
-        <div
-          className="absolute top-14 inset-x-0 z-10 mx-6 md:mx-10"
-          style={{ maxWidth: 900 }}
-        >
+        <div className="fixed top-16 inset-x-0 z-50 flex justify-center px-6 pointer-events-none">
           <Link
             to="/waiting"
-            className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-mono transition-opacity hover:opacity-80"
+            className="pointer-events-auto flex items-center gap-2.5 px-4 py-2 text-xs font-mono transition-opacity hover:opacity-80 fade-in"
             style={{
-              background: requestStatus === "approved"
-                ? "rgba(122,200,160,0.12)"
-                : unreadCount > 0
-                  ? "rgba(232,115,74,0.12)"
-                  : "rgba(255,255,255,0.04)",
+              background: requestStatus === "approved" ? "rgba(122,200,160,0.12)" : unreadCount > 0 ? "rgba(232,115,74,0.12)" : "rgba(255,255,255,0.04)",
               border: `1px solid ${requestStatus === "approved" ? "rgba(122,200,160,0.3)" : unreadCount > 0 ? "rgba(232,115,74,0.3)" : "rgba(255,255,255,0.08)"}`,
-              borderRadius: 8,
+              borderRadius: 99,
               color: requestStatus === "approved" ? "#7AC8A0" : unreadCount > 0 ? "#E8734A" : "#8A8480",
+              backdropFilter: "blur(12px)",
             }}
           >
-            <Bell className="h-3.5 w-3.5 flex-shrink-0" />
+            <Bell className="h-3 w-3 flex-shrink-0" />
             {requestStatus === "approved"
-              ? "you're approved — create your account \u2192"
+              ? "you're approved — create your account →"
               : unreadCount > 0
-                ? `you have ${unreadCount} message${unreadCount > 1 ? "s" : ""} from the team \u2192`
-                : "your request is being reviewed \u2192"}
+                ? `${unreadCount} message${unreadCount > 1 ? "s" : ""} from the team →`
+                : "your request is being reviewed →"}
           </Link>
         </div>
       )}
 
-      <div className={`min-h-screen pt-20 pb-10 px-6 md:px-10 transition-all ${showVideo ? "blur-sm pointer-events-none" : ""}`}>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 max-w-7xl mx-auto">
-          {/* Sharp Windows Phone live tiles, 2px gaps, labels visible */}
-          <div className="grid grid-cols-4 auto-rows-[110px] md:auto-rows-[140px] gap-[2px]">
-            <Tile slug="resources" onClick={handleTileClick} className="col-span-2 row-span-2" big />
-            <Tile slug="ai-news"   onClick={handleTileClick} className="col-span-2 row-span-1" />
-            <Tile slug="ideas"     onClick={handleTileClick} className="col-span-2 row-span-1" />
-            <Tile slug="vibing"    onClick={handleTileClick} className="col-span-2 row-span-1" />
-            <Tile slug="hiring"    onClick={handleTileClick} className="col-span-1 row-span-1" />
-            <Tile slug="wins"      onClick={handleTileClick} className="col-span-1 row-span-1" />
-          </div>
+      {/* ── Hero ──────────────────────────────────────────────────────── */}
+      <section className="relative min-h-screen flex flex-col items-center justify-center px-6 text-center pt-20">
+        <div className="fade-up max-w-3xl mx-auto">
+          <p className="text-xs font-mono uppercase tracking-widest mb-6 opacity-50">builders house</p>
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-medium leading-[1.08] mb-6" style={{ letterSpacing: "-0.04em" }}>
+            you're not lazy.
+            <br />
+            <span className="gradient-text">you're under-directed.</span>
+          </h1>
+          <p className="text-base md:text-lg max-w-xl mx-auto mb-10 leading-relaxed" style={{ color: "#8A8480" }}>
+            a small, private room for founders and builders who are actually shipping something — not just talking about it.
+          </p>
+          <a href="#join" className="inline-flex items-center gap-2 text-sm font-mono px-5 py-3 rounded-full transition-all hover:scale-105 active:scale-95"
+            style={{ background: "#E8734A", color: "#0D0D0D" }}>
+            request access &darr;
+          </a>
+        </div>
 
-          <div className="p-6 md:p-7 self-start" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
+        {/* Scroll hint */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-30 animate-bounce">
+          <div className="h-8 w-px" style={{ background: "linear-gradient(to bottom, transparent, #F5F0EB)" }} />
+        </div>
+      </section>
+
+      {/* ── VSL section ───────────────────────────────────────────────── */}
+      <section className="relative px-6 md:px-10 py-16 md:py-24">
+        <div className="max-w-3xl mx-auto fade-up">
+          <p className="text-xs font-mono uppercase tracking-widest text-center mb-3 opacity-40">watch first</p>
+          <h2 className="text-xl md:text-2xl font-medium text-center mb-8" style={{ letterSpacing: "-0.03em" }}>
+            what is builders house?
+          </h2>
+          <div className="glass-card overflow-hidden" style={{ borderRadius: 20, padding: 8 }}>
+            <div className="aspect-video overflow-hidden" style={{ borderRadius: 14 }}>
+              <iframe
+                src={PLACEHOLDER_VIDEO}
+                className="w-full h-full"
+                allowFullScreen
+                title="builders house — what is this?"
+              />
+            </div>
+          </div>
+          <p className="text-center text-xs font-mono mt-4 opacity-30">3 minutes · worth it</p>
+        </div>
+      </section>
+
+      {/* ── Why section ───────────────────────────────────────────────── */}
+      <section className="relative px-6 md:px-10 py-12 md:py-16">
+        <div className="max-w-3xl mx-auto grid md:grid-cols-3 gap-4">
+          {[
+            { label: "signal only", body: "no noise, no hustle bro energy. everyone here is making something real." },
+            { label: "small on purpose", body: "capped. curated. every member is handpicked. quality over growth." },
+            { label: "earned, not bought", body: "you don't pay to get in. you apply. if you're building, you belong." },
+          ].map((item) => (
+            <div key={item.label} className="glass-card p-5 fade-up">
+              <p className="text-xs font-mono uppercase tracking-wider mb-3" style={{ color: "#E8734A" }}>{item.label}</p>
+              <p className="text-sm leading-relaxed" style={{ color: "#8A8480" }}>{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Join section ──────────────────────────────────────────────── */}
+      <section id="join" className="relative px-6 md:px-10 py-16 md:py-24 scroll-mt-20">
+        <div className="max-w-md mx-auto fade-up">
+          <p className="text-xs font-mono uppercase tracking-widest text-center mb-3 opacity-40">the door</p>
+          <div className="glass-card p-7 md:p-8" style={{ borderRadius: 20 }}>
             {pendingEmail && !user
               ? <ReturningVisitorPanel
                   email={pendingEmail}
@@ -150,75 +178,88 @@ if (!loading && user && profile && !profile.is_approved) return <Navigate to="/w
             }
           </div>
         </div>
-      </div>
+      </section>
 
-      {showVideo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.92)" }}
-          onClick={dismissVideo}
-        >
-          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl md:text-2xl font-medium mb-5 text-center" style={{ color: "#F5F0EB" }}>what is builders house?</h2>
-            <div className="aspect-video overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
-              <iframe src={PLACEHOLDER_VIDEO} className="w-full h-full" allowFullScreen title="builders house" />
-            </div>
-            <div className="mt-5 text-center">
-              <button onClick={dismissVideo} className="text-sm hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>
-                skip for now →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Footer ────────────────────────────────────────────────────── */}
+      <footer className="relative px-6 md:px-10 py-8 text-center border-t" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+        <p className="text-xs font-mono opacity-20">builders house · a private room for people who are building</p>
+      </footer>
 
-      <Dialog open={!!lockedModal} onOpenChange={(o) => !o && setLockedModal(null)}>
-        <DialogContent className="border-0 max-w-sm" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="text-center py-4">
-            <Lock className="h-8 w-8 mx-auto mb-3" style={{ color: "#E8734A" }} />
-            <h3 className="text-lg font-medium mb-2" style={{ color: "#F5F0EB" }}>members only</h3>
-            <p className="text-sm mb-6" style={{ color: "#8A8480" }}>{lockedModal} is for approved builders.</p>
-            <div className="flex gap-2 justify-center">
-              <Button onClick={() => setLockedModal(null)}>request access</Button>
-              <Link to="/login"><Button variant="ghost">log in</Button></Link>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <style>{`@keyframes tilePulse { 0%,100% { box-shadow: 0 0 24px rgba(232,115,74,0.5); } 50% { box-shadow: 0 0 40px rgba(232,115,74,0.8); } }`}</style>
+      <style>{`
+        .orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(120px);
+          opacity: 0.18;
+          animation: drift 18s ease-in-out infinite alternate;
+        }
+        .orb-1 {
+          width: 600px; height: 600px;
+          background: #E8734A;
+          top: -200px; left: -150px;
+          animation-duration: 22s;
+        }
+        .orb-2 {
+          width: 500px; height: 500px;
+          background: #1D6AE5;
+          top: 30%; right: -180px;
+          animation-duration: 28s;
+          animation-delay: -8s;
+        }
+        .orb-3 {
+          width: 400px; height: 400px;
+          background: #7C3AED;
+          bottom: 10%; left: 20%;
+          animation-duration: 20s;
+          animation-delay: -14s;
+        }
+        @keyframes drift {
+          0%   { transform: translate(0, 0) scale(1); }
+          33%  { transform: translate(40px, -30px) scale(1.05); }
+          66%  { transform: translate(-20px, 50px) scale(0.97); }
+          100% { transform: translate(30px, 20px) scale(1.03); }
+        }
+        .grain {
+          position: absolute; inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E");
+          background-size: 200px 200px;
+          opacity: 0.04;
+          pointer-events: none;
+        }
+        .gradient-text {
+          background: linear-gradient(135deg, #E8734A 0%, #F5C518 50%, #E8734A 100%);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          animation: shimmer 4s linear infinite;
+        }
+        @keyframes shimmer {
+          0%   { background-position: 0% center; }
+          100% { background-position: 200% center; }
+        }
+        .glass-card {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+        }
+        .fade-up {
+          animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both;
+        }
+        .fade-in {
+          animation: fadeIn 0.4s ease both;
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+      `}</style>
     </div>
-  );
-};
-
-const Tile = ({ slug, onClick, className = "", big }: { slug: string; onClick: (s: string) => void; className?: string; big?: boolean }) => {
-  const cfg = TILE_CONFIG[slug];
-  if (!cfg) return null;
-  const Icon = cfg.icon;
-  return (
-    <button
-      onClick={() => onClick(slug)}
-      className={`group relative flex flex-col items-start justify-between p-3 md:p-4 overflow-hidden transition-transform hover:scale-[1.01] active:scale-[0.99] ${className}`}
-      style={{
-        background: cfg.bg,
-        boxShadow: cfg.glow ? "0 0 24px rgba(232,115,74,0.5)" : undefined,
-        animation: cfg.glow ? "tilePulse 3s ease-in-out infinite" : undefined,
-        borderRadius: 0,
-      }}
-    >
-      <Icon style={{ color: cfg.fg }} className={`${big ? "h-8 w-8 md:h-10 md:w-10" : "h-6 w-6 md:h-7 md:w-7"}`} strokeWidth={2} />
-      <span
-        className={`font-medium tracking-tight ${big ? "text-base md:text-lg" : "text-xs md:text-sm"}`}
-        style={{ color: cfg.fg, letterSpacing: "-0.02em" }}
-      >
-        {cfg.label}
-      </span>
-      {cfg.locked && (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <Lock className="h-6 w-6" style={{ color: "#F5F0EB" }} strokeWidth={2} />
-        </div>
-      )}
-    </button>
   );
 };
 
@@ -243,7 +284,6 @@ const StandardJoinPanel = () => {
     } as any);
     setBusy(false);
     if (error) {
-      // Duplicate email — they already applied, send them to their thread
       if (error.code === "23505" || error.message?.includes("unique") || error.message?.includes("duplicate")) {
         try { localStorage.setItem("bh-pending-email", email.trim().toLowerCase()); } catch {}
         nav("/waiting");
@@ -260,14 +300,13 @@ const StandardJoinPanel = () => {
         content: `new access request from ${name.trim()}`,
       })));
     }
-    // Persist email so banner shows on return visits
     try { localStorage.setItem("bh-pending-email", email.trim().toLowerCase()); } catch {}
     setSubmitted(true);
   };
 
   if (submitted) {
     return (
-      <div className="py-8 text-center">
+      <div className="py-6 text-center">
         <p className="text-lg font-medium mb-2" style={{ color: "#F5F0EB" }}>got it.</p>
         <p className="text-sm mb-4" style={{ color: "#8A8480" }}>you'll hear back soon.</p>
         <Link to="/waiting" className="text-xs font-mono hover:opacity-80 transition-opacity" style={{ color: "#E8734A" }}>
@@ -279,20 +318,32 @@ const StandardJoinPanel = () => {
 
   return (
     <div>
-      <h2 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>want in?</h2>
-      <p className="text-xs font-mono mb-5" style={{ color: "#8A8480" }}>request access — we read every one.</p>
+      <h2 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>want in?</h2>
+      <p className="text-xs font-mono mb-6" style={{ color: "#8A8480" }}>we read every application.</p>
       <div className="space-y-3">
         <PanelInput value={name} onChange={setName} placeholder="name" />
         <PanelInput value={email} onChange={setEmail} placeholder="email" type="email" />
-        <textarea value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="what are you building right now?"
-          rows={4} maxLength={2000}
+        <textarea
+          value={building}
+          onChange={(e) => setBuilding(e.target.value)}
+          placeholder="what are you building right now?"
+          rows={4}
+          maxLength={2000}
           className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none"
-          style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+          style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F0EB", borderRadius: 10 }}
+        />
         <div className="grid grid-cols-2 gap-2">
           <StageOption active={stage === "figuring"} onClick={() => setStage("figuring")} label="still figuring it out" />
           <StageOption active={stage === "shipping"} onClick={() => setStage("shipping")} label="shipping & making money" />
         </div>
-        <Button onClick={submit} disabled={busy} className="w-full">{busy ? "sending…" : "request access"}</Button>
+        <Button
+          onClick={submit}
+          disabled={busy}
+          className="w-full"
+          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10, fontFamily: "monospace", letterSpacing: "0.04em" }}
+        >
+          {busy ? "sending…" : "request access"}
+        </Button>
       </div>
     </div>
   );
@@ -308,13 +359,13 @@ const ReturningVisitorPanel = ({ email, status, unreadCount, onClear }: {
       <div>
         <div className="flex items-center gap-2 mb-3">
           <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: "#7AC8A0" }} />
-          <h2 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>you're approved.</h2>
+          <h2 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>you're approved.</h2>
         </div>
         <p className="text-sm mb-6" style={{ color: "#8A8480" }}>create your account to get in.</p>
         <Button
           onClick={() => nav(`/signup?email=${encodeURIComponent(email)}`)}
           className="w-full"
-          style={{ background: "#E8734A", color: "#0D0D0D" }}
+          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10 }}
         >
           create account &rarr;
         </Button>
@@ -336,12 +387,11 @@ const ReturningVisitorPanel = ({ email, status, unreadCount, onClear }: {
     );
   }
 
-  // pending or null (still loading)
   return (
     <div>
       <div className="flex items-center gap-2 mb-1">
         <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: "#C9B99A" }} />
-        <h2 className="text-base font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>request submitted.</h2>
+        <h2 className="text-base font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>request submitted.</h2>
       </div>
       <p className="text-xs font-mono mb-5 ml-4" style={{ color: "#8A8480" }}>{email}</p>
       {unreadCount > 0 && (
@@ -361,20 +411,6 @@ const ReturningVisitorPanel = ({ email, status, unreadCount, onClear }: {
   );
 };
 
-const StageOption = ({ active, onClick, label }: any) => (
-  <button type="button" onClick={onClick}
-    className="text-left p-2.5 text-xs transition-colors"
-    style={{
-      background: active ? "#1E1E1E" : "#0D0D0D",
-      border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
-      color: active ? "#E8734A" :
-"#8A8480",
-      borderRadius: 8,
-    }}>
-    {label}
-  </button>
-);
-
 const YoloPanel = () => {
   const nav = useNavigate();
   const [step, setStep] = useState<"ask" | "yes" | "no">("ask");
@@ -386,15 +422,17 @@ const YoloPanel = () => {
   const yolo = async () => {
     if (!name.trim() || !email.trim() || !building.trim()) { toast.error("name, email, what you're building"); return; }
     setBusy(true);
-    const { error } = await supabase.rpc("yolo_request", {
-      p_name: name.trim(),
-      p_email: email.trim().toLowerCase(),
-      p_what_building: building.trim(),
+    const { data, error } = await supabase.functions.invoke("yolo-onboard", {
+      body: { name: name.trim(), email: email.trim().toLowerCase(), what_building: building.trim() },
     });
     setBusy(false);
-    if (error) { toast.error(error.message); return; }
-    try { localStorage.setItem("bh-pending-email", email.trim().toLowerCase()); } catch {}
-    nav(`/signup?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+    if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); return; }
+    if (data?.password) {
+      const { error: signErr } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: data.password });
+      if (signErr) { toast.error(signErr.message); return; }
+      toast.success("you're in.");
+      nav("/home");
+    }
   };
 
   if (step === "no") return (
@@ -406,36 +444,80 @@ const YoloPanel = () => {
 
   if (step === "yes") return (
     <div>
-      <h2 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>cool. quick details.</h2>
+      <h2 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>cool. quick details.</h2>
       <p className="text-xs font-mono mb-5" style={{ color: "#8A8480" }}>you'll be in immediately.</p>
       <div className="space-y-3">
         <PanelInput value={name} onChange={setName} placeholder="name" />
         <PanelInput value={email} onChange={setEmail} placeholder="email" type="email" />
-        <textarea value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="what are you building?"
-          rows={3} className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none"
-          style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
-        <Button onClick={yolo} disabled={busy} className="w-full">{busy ? "letting you in…" : "let me in"}</Button>
+        <textarea
+          value={building}
+          onChange={(e) => setBuilding(e.target.value)}
+          placeholder="what are you building?"
+          rows={3}
+          className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none"
+          style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F0EB", borderRadius: 10 }}
+        />
+        <Button
+          onClick={yolo}
+          disabled={busy}
+          className="w-full"
+          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10 }}
+        >
+          {busy ? "letting you in…" : "let me in"}
+        </Button>
       </div>
     </div>
   );
 
   return (
     <div className="py-6">
-      <h2 className="text-2xl font-medium mb-6 text-center" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>are you a cool person?</h2>
+      <h2 className="text-2xl font-medium mb-2 text-center" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>are you a cool person?</h2>
+      <p className="text-xs font-mono text-center mb-6" style={{ color: "#8A8480" }}>honest answer only</p>
       <div className="flex gap-3">
-        <button onClick={() => setStep("yes")} className="flex-1 py-3 text-sm font-medium"
-          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8 }}>yes</button>
-        <button onClick={() => setStep("no")} className="flex-1 py-3 text-sm font-medium"
-          style={{ background: "#1E1E1E", color: "#8A8480", borderRadius: 8 }}>no</button>
+        <button
+          onClick={() => setStep("yes")}
+          className="flex-1 py-3 text-sm font-medium transition-transform hover:scale-[1.02] active:scale-95"
+          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10 }}
+        >
+          yes
+        </button>
+        <button
+          onClick={() => setStep("no")}
+          className="flex-1 py-3 text-sm font-medium transition-opacity hover:opacity-70"
+          style={{ background: "rgba(255,255,255,0.05)", color: "#8A8480", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)" }}
+        >
+          no
+        </button>
       </div>
     </div>
   );
 };
 
+const StageOption = ({ active, onClick, label }: any) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="text-left p-2.5 text-xs transition-all hover:opacity-90"
+    style={{
+      background: active ? "rgba(232,115,74,0.1)" : "rgba(0,0,0,0.35)",
+      border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+      color: active ? "#E8734A" : "#8A8480",
+      borderRadius: 8,
+    }}
+  >
+    {label}
+  </button>
+);
+
 const PanelInput = ({ value, onChange, placeholder, type = "text" }: any) => (
-  <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} type={type}
+  <input
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    placeholder={placeholder}
+    type={type}
     className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
-    style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+    style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F0EB", borderRadius: 10 }}
+  />
 );
 
 export default Index;
