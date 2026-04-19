@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 
 const PLACEHOLDER_VIDEO = "https://www.youtube.com/embed/dQw4w9WgXcQ";
 
+/* ── Seeded RNG ──────────────────────────────────────────────────────────── */
 const rng32 = (seed: number) => {
   let s = seed;
   return () => {
@@ -47,6 +48,17 @@ const EMOJIS = [
   { e: "⭐", x: 96, y: 40, s: 16, o: 0.20, delay: 2.8 },
 ];
 
+/* ── Tile config — mirrors Home.tsx exactly ─────────────────────────────── */
+const TILES: Record<string, { bg: string; fg: string; icon: any; label: string }> = {
+  "resources": { bg: "#E8734A", fg: "#0D0D0D", icon: Star,       label: "critical info" },
+  "ai-news":   { bg: "#1D6AE5", fg: "#FFFFFF", icon: Zap,         label: "ai news" },
+  "ideas":     { bg: "#F5C518", fg: "#1A1500", icon: Lightbulb,   label: "ideas" },
+  "vibing":    { bg: "#7C3AED", fg: "#FFFFFF", icon: Music,       label: "vibing" },
+  "hiring":    { bg: "#16A34A", fg: "#FFFFFF", icon: Briefcase,   label: "hiring" },
+  "wins":      { bg: "#EA580C", fg: "#FFFFFF", icon: Trophy,      label: "wins" },
+};
+
+/* ── Scroll-reveal hook ──────────────────────────────────────────────────── */
 const useReveal = () => {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -61,6 +73,7 @@ const useReveal = () => {
   return ref;
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════ */
 const Index = () => {
   const nav = useNavigate();
   const { user, profile, loading } = useAuth();
@@ -72,6 +85,31 @@ const Index = () => {
   });
   const [unreadCount, setUnreadCount]     = useState(0);
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
+  const [channels, setChannels]           = useState<any[]>([]);
+  const [pubPreviews, setPubPreviews]     = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    (async () => {
+      const { data: chs } = await supabase
+        .from("channels")
+        .select("id, slug, name, is_public_visible")
+        .order("sort_order");
+      if (!chs) return;
+      setChannels(chs);
+      const pubIds = chs.filter((c: any) => c.is_public_visible).map((c: any) => c.id);
+      if (!pubIds.length) return;
+      const { data: posts } = await supabase
+        .from("posts")
+        .select("id, channel_id, title, content")
+        .in("channel_id", pubIds)
+        .eq("visibility", "public")
+        .order("created_at", { ascending: false })
+        .limit(30);
+      const prev: Record<string, any> = {};
+      (posts ?? []).forEach((p: any) => { if (!prev[p.channel_id]) prev[p.channel_id] = p; });
+      setPubPreviews(prev);
+    })();
+  }, []);
 
   useEffect(() => {
     document.title = "builders house — a private room for people who are building";
@@ -107,9 +145,9 @@ const Index = () => {
     })();
   }, [pendingEmail]);
 
-  if (!loading && user && !profile)                        return <Navigate to="/waiting" replace />;
-  if (!loading && user && profile?.is_approved)            return <Navigate to="/home"    replace />;
-  if (!loading && user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
+  if (!loading && user && !profile)                         return <Navigate to="/waiting" replace />;
+  if (!loading && user && profile?.is_approved)             return <Navigate to="/home"    replace />;
+  if (!loading && user && profile && !profile.is_approved)  return <Navigate to="/waiting" replace />;
 
   const chRef   = useReveal();
   const heroRef = useReveal();
@@ -121,9 +159,11 @@ const Index = () => {
   return (
     <div className="bh-root">
 
+      {/* ── Glowing cursor ─────────────────────────────────────────── */}
       <div className={`bh-cursor${cursorClick ? " pressed" : ""}`}
         style={{ left: cursor.x, top: cursor.y }} />
 
+      {/* ── Landscape background ───────────────────────────────────── */}
       <div className="bh-sky" aria-hidden="true">
         {STARS.map((s, i) => (
           <span key={i} className={`bh-star${s.twinkle ? " twinkle" : ""}`} style={{
@@ -158,7 +198,7 @@ const Index = () => {
         <div className="bh-grain" />
       </div>
 
-      {/* ── Nav ── */}
+      {/* ── Nav ────────────────────────────────────────────────────── */}
       <header className="bh-nav">
         <Link to={user ? "/home" : "/"} className="bh-logo">builders house.</Link>
         <div className="bh-nav-r">
@@ -169,7 +209,7 @@ const Index = () => {
         </div>
       </header>
 
-      {/* ── Return-visitor banner ── */}
+      {/* ── Return-visitor banner ──────────────────────────────────── */}
       {!user && pendingEmail && (
         <div className="bh-banner-wrap">
           <Link to="/waiting" className="bh-banner" style={{
@@ -187,7 +227,7 @@ const Index = () => {
       )}
 
       {/* ══════════════════════════════════════════════════════════════ */}
-      {/* ── CHANNELS GRID — TOP OF PAGE ────────────────────────────── */}
+      {/* ── CHANNELS GRID — TOP OF PAGE ──────────────────────────────  */}
       {/* ══════════════════════════════════════════════════════════════ */}
       <section className="bh-ch-section">
         <div ref={chRef} className="bh-reveal bh-ch-outer">
@@ -197,47 +237,26 @@ const Index = () => {
             what's inside
           </div>
 
-          {/* Top block */}
+          {/* ── Top two-column block ── */}
           <div className="bh-ch-top">
-            <div className="bh-ct bh-ct-big" style={{ background: "#D95F2B" }}>
-              <Star className="bh-ct-icon" strokeWidth={1.5} />
-              <div className="bh-ct-foot">
-                <span className="bh-ct-name">critical info</span>
-              </div>
-            </div>
+            {(() => {
+              const ch = channels.find((c: any) => c.slug === "resources");
+              return <LandingTile ch={ch} cfg={TILES["resources"]} size="big" preview={ch ? pubPreviews[ch.id] : null} />;
+            })()}
             <div className="bh-ch-right">
-              <div className="bh-ct bh-ct-sm" style={{ background: "#2355C8" }}>
-                <Zap className="bh-ct-icon" strokeWidth={1.5} />
-                <div className="bh-ct-foot">
-                  <span className="bh-ct-name">ai news</span>
-                </div>
-              </div>
-              <div className="bh-ct bh-ct-sm" style={{ background: "#C8A400" }}>
-                <Lightbulb className="bh-ct-icon" strokeWidth={1.5} />
-                <div className="bh-ct-foot">
-                  <span className="bh-ct-name">ideas</span>
-                </div>
-              </div>
+              {["ai-news", "ideas"].map((slug) => {
+                const ch = channels.find((c: any) => c.slug === slug);
+                return <LandingTile key={slug} ch={ch} cfg={TILES[slug]} size="sm" preview={ch ? pubPreviews[ch.id] : null} />;
+              })}
             </div>
           </div>
 
-          {/* Bottom row — locked */}
+          {/* ── Bottom row — three equal tiles ── */}
           <div className="bh-ch-bottom">
-            <div className="bh-ct bh-ct-bot" style={{ background: "#5B2A9E" }}>
-              <Music className="bh-ct-icon" strokeWidth={1.5} />
-              <Lock className="bh-ct-lock" strokeWidth={1.5} />
-              <div className="bh-ct-foot"><span className="bh-ct-name">vibing</span></div>
-            </div>
-            <div className="bh-ct bh-ct-bot" style={{ background: "#1A5C2A" }}>
-              <Briefcase className="bh-ct-icon" strokeWidth={1.5} />
-              <Lock className="bh-ct-lock" strokeWidth={1.5} />
-              <div className="bh-ct-foot"><span className="bh-ct-name">hiring</span></div>
-            </div>
-            <div className="bh-ct bh-ct-bot" style={{ background: "#6B2A1A" }}>
-              <Trophy className="bh-ct-icon" strokeWidth={1.5} />
-              <Lock className="bh-ct-lock" strokeWidth={1.5} />
-              <div className="bh-ct-foot"><span className="bh-ct-name">wins</span></div>
-            </div>
+            {["vibing", "hiring", "wins"].map((slug) => {
+              const ch = channels.find((c: any) => c.slug === slug);
+              return <LandingTile key={slug} ch={ch} cfg={TILES[slug]} size="bot" preview={ch ? pubPreviews[ch.id] : null} />;
+            })}
           </div>
 
           <p className="bh-ch-hint">
@@ -252,19 +271,24 @@ const Index = () => {
       {/* ══════════════════════════════════════════════════════════════ */}
       <section className="bh-hero">
         <div ref={heroRef} className="bh-reveal bh-hero-inner">
+
           <div className="bh-badge">
             <span className="bh-dot" />
             a room for builders · free to join
           </div>
+
           <h1 className="bh-h1">
             Where builders<br />
             <span className="bh-shimmer">connect, share,</span><br />
             and ship things.
           </h1>
+
           <p className="bh-sub">
             A small space for people actually building —
             share work, find resources, talk to others who get it.
           </p>
+
+          {/* WP-tile CTA block */}
           <div className="bh-tile-grid">
             <a href="#join" className="bh-tile bh-tile-coral bh-tile-wide">
               <span className="bh-tl">join the house</span>
@@ -282,6 +306,7 @@ const Index = () => {
               <span className="bh-tsub">free</span>
             </a>
           </div>
+
           <div className="bh-stats">
             {[
               { n: "free",  l: "always"        },
@@ -295,6 +320,8 @@ const Index = () => {
             ))}
           </div>
         </div>
+
+        <div className="bh-scroll-cue"><div className="bh-scroll-line" /></div>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════ */}
@@ -352,7 +379,7 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Quote */}
+      {/* Quote break */}
       <div className="bh-quote-strip">
         <p className="bh-quote">"Finally a place that doesn't feel like a LinkedIn comment section."</p>
       </div>
@@ -397,13 +424,40 @@ const Index = () => {
         </div>
       </footer>
 
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* ── STYLES ───────────────────────────────────────────────────  */}
+      {/* ══════════════════════════════════════════════════════════════ */}
       <style>{`
+
         *, *::before, *::after { cursor: none !important; box-sizing: border-box; }
-        .bh-root { min-height: 100vh; background: #020408; color: #F0EBE3; font-family: inherit; overflow-x: hidden; position: relative; }
-        .bh-cursor { position: fixed; width: 10px; height: 10px; background: #E8734A; border-radius: 50%; pointer-events: none; z-index: 999999; transform: translate(-50%,-50%); transition: width .12s, height .12s; box-shadow: 0 0 8px 4px rgba(232,115,74,0.6), 0 0 20px 8px rgba(232,115,74,0.25), 0 0 40px 16px rgba(232,115,74,0.08); animation: bhCursorPulse 2.5s ease-in-out infinite; }
+
+        .bh-root {
+          min-height: 100vh; background: #020408;
+          color: #F0EBE3; font-family: inherit;
+          overflow-x: hidden; position: relative;
+        }
+
+        /* ── Cursor ── */
+        .bh-cursor {
+          position: fixed; width: 10px; height: 10px; background: #E8734A;
+          border-radius: 50%; pointer-events: none; z-index: 999999;
+          transform: translate(-50%,-50%); transition: width .12s, height .12s;
+          box-shadow: 0 0 8px 4px rgba(232,115,74,0.6), 0 0 20px 8px rgba(232,115,74,0.25), 0 0 40px 16px rgba(232,115,74,0.08);
+          animation: bhCursorPulse 2.5s ease-in-out infinite;
+        }
         .bh-cursor.pressed { width: 6px; height: 6px; box-shadow: 0 0 14px 7px rgba(232,115,74,0.9); }
-        @keyframes bhCursorPulse { 0%,100% { box-shadow: 0 0 8px 4px rgba(232,115,74,0.6), 0 0 20px 8px rgba(232,115,74,0.2); } 50% { box-shadow: 0 0 14px 7px rgba(232,115,74,0.8), 0 0 30px 14px rgba(232,115,74,0.3); } }
-        .bh-sky { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: linear-gradient(to bottom, #020408 0%, #040d1c 12%, #061525 28%, #071a1a 50%, #081a0a 68%, #100c06 85%, #080404 100%); }
+        @keyframes bhCursorPulse {
+          0%,100% { box-shadow: 0 0 8px 4px rgba(232,115,74,0.6), 0 0 20px 8px rgba(232,115,74,0.2); }
+          50%      { box-shadow: 0 0 14px 7px rgba(232,115,74,0.8), 0 0 30px 14px rgba(232,115,74,0.3); }
+        }
+
+        /* ── Sky ── */
+        .bh-sky {
+          position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+          background: linear-gradient(to bottom,
+            #020408 0%, #040d1c 12%, #061525 28%, #071a1a 50%, #081a0a 68%, #100c06 85%, #080404 100%
+          );
+        }
         .bh-star { position: absolute; border-radius: 50%; background: #fff; pointer-events: none; }
         .bh-star.twinkle { animation: bhTwinkle ease-in-out infinite alternate; }
         @keyframes bhTwinkle { 0%{opacity:0.15;transform:scale(0.6)} 100%{opacity:1;transform:scale(1.4);filter:blur(0.4px)} }
@@ -422,7 +476,11 @@ const Index = () => {
         .bh-orb-d { width: 360px; height: 360px; background: radial-gradient(#2d5a1a, transparent 70%); opacity: 0.10; bottom: 8%; right: 10%; animation-duration: 19s; animation-delay: -21s; }
         @keyframes bhDrift { 0%{transform:translate(0,0) scale(1)} 50%{transform:translate(30px,-22px) scale(1.05)} 100%{transform:translate(-18px,40px) scale(0.97)} }
         .bh-grain { position: absolute; inset: 0; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E"); background-size: 200px 200px; opacity: 0.035; }
+
+        /* ── Glass ── */
         .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+
+        /* ── Nav ── */
         .bh-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: flex; align-items: center; justify-content: space-between; padding: 18px 36px; background: rgba(2,4,8,0.72); backdrop-filter: blur(24px); border-bottom: 1px solid rgba(255,255,255,0.05); }
         @media (max-width:640px) { .bh-nav { padding: 16px 18px; } }
         .bh-logo { font-size: 14px; font-weight: 500; letter-spacing: -0.02em; color: #F0EBE3; text-decoration: none; }
@@ -432,43 +490,155 @@ const Index = () => {
         .bh-nav-link:hover { color: #F0EBE3; }
         .bh-tile-btn { font-size: 11px; font-family: monospace; letter-spacing: 0.06em; text-transform: uppercase; color: #0A0A0A; background: #E8734A; padding: 8px 18px; text-decoration: none; transition: opacity .15s; }
         .bh-tile-btn:hover { opacity: 0.85; }
+
+        /* ── Banner ── */
         .bh-banner-wrap { position: fixed; top: 66px; inset-x: 0; z-index: 50; display: flex; justify-content: center; pointer-events: none; }
         .bh-banner { pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 11px; font-family: monospace; text-decoration: none; background: var(--bc); border: 1px solid var(--bor); color: var(--bcc); backdrop-filter: blur(12px); animation: bhFadeIn .4s ease both; transition: opacity .2s; }
         .bh-banner:hover { opacity: 0.8; }
 
-        /* ── Channels top section ── */
-        .bh-ch-section { position: relative; z-index: 1; padding: 92px 36px 0; display: flex; justify-content: center; }
+        /* ══════════════════════════════════════════════════ */
+        /* ── CHANNELS — TOP SECTION ── */
+        /* ══════════════════════════════════════════════════ */
+        .bh-ch-section {
+          position: relative; z-index: 1;
+          padding: 92px 36px 0;
+          display: flex; justify-content: center;
+        }
         @media (max-width:640px) { .bh-ch-section { padding: 84px 18px 0; } }
-        .bh-ch-outer { width: 100%; max-width: 620px; }
-        .bh-ch-label { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; color: #5A5550; margin-bottom: 12px; }
-        .bh-dot-sm { width: 5px; height: 5px; border-radius: 50%; background: #E8734A; box-shadow: 0 0 6px rgba(232,115,74,0.8); animation: bhPulse 2s ease-in-out infinite; flex-shrink: 0; }
-        .bh-ch-top { display: grid; grid-template-columns: 1.85fr 1fr; gap: 4px; margin-bottom: 4px; }
-        .bh-ch-right { display: flex; flex-direction: column; gap: 4px; }
-        .bh-ch-bottom { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
-        .bh-ct { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; transition: filter .15s, transform .12s; }
-        .bh-ct:hover { filter: brightness(1.08); transform: scale(0.987); }
-        .bh-ct-big { height: 300px; padding: 18px; }
-        @media (max-width:480px) { .bh-ct-big { height: 200px; } }
-        .bh-ct-sm { flex: 1; min-height: 0; padding: 14px; }
-        .bh-ct-bot { height: 130px; padding: 14px; }
-        @media (max-width:480px) { .bh-ct-bot { height: 100px; } }
-        .bh-ct-icon { width: 22px; height: 22px; color: rgba(255,255,255,0.7); flex-shrink: 0; }
-        .bh-ct-lock { position: absolute; bottom: 36px; right: 14px; width: 18px; height: 18px; color: rgba(255,255,255,0.35); }
-        .bh-ct-foot { display: flex; flex-direction: column; gap: 2px; }
-        .bh-ct-name { font-size: 12px; font-family: monospace; font-weight: 600; letter-spacing: 0.02em; color: rgba(255,255,255,0.85); line-height: 1.2; }
-        .bh-ch-hint { font-size: 10px; font-family: monospace; letter-spacing: 0.05em; color: #2A2520; margin-top: 10px; text-align: center; }
 
-        /* ── Hero ── */
-        .bh-hero { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 36px 80px; text-align: center; }
+        .bh-ch-outer {
+          width: 100%; max-width: 620px;
+        }
+
+        .bh-ch-label {
+          display: inline-flex; align-items: center; gap: 8px;
+          font-size: 10px; font-family: monospace; letter-spacing: 0.12em;
+          text-transform: uppercase; color: #5A5550;
+          margin-bottom: 12px;
+        }
+        .bh-dot-sm {
+          width: 5px; height: 5px; border-radius: 50%; background: #E8734A;
+          box-shadow: 0 0 6px rgba(232,115,74,0.8);
+          animation: bhPulse 2s ease-in-out infinite; flex-shrink: 0;
+        }
+
+        /* Top block: big tile + right column */
+        .bh-ch-top {
+          display: grid;
+          grid-template-columns: 1.85fr 1fr;
+          gap: 4px;
+          margin-bottom: 4px;
+        }
+
+        /* Right column: two stacked */
+        .bh-ch-right {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        /* Bottom row: three equal */
+        .bh-ch-bottom {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 4px;
+        }
+
+        /* Base channel tile */
+        .bh-ct {
+          position: relative;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          transition: filter .15s, transform .12s;
+        }
+        .bh-ct:hover { filter: brightness(1.08); transform: scale(0.987); }
+
+        /* Big tile */
+        .bh-ct-big {
+          height: 300px;
+          padding: 18px;
+        }
+        @media (max-width:480px) { .bh-ct-big { height: 200px; } }
+
+        /* Small stacked tiles */
+        .bh-ct-sm {
+          flex: 1;
+          min-height: 0;
+          padding: 14px;
+        }
+
+        /* Bottom row tiles */
+        .bh-ct-bot {
+          height: 130px;
+          padding: 14px;
+        }
+        @media (max-width:480px) { .bh-ct-bot { height: 100px; } }
+
+        .bh-ct-icon {
+          width: 22px; height: 22px;
+          color: rgba(255,255,255,0.7);
+          flex-shrink: 0;
+        }
+
+        .bh-ct-lock {
+          position: absolute;
+          bottom: 36px; right: 14px;
+          width: 18px; height: 18px;
+          color: rgba(255,255,255,0.35);
+        }
+
+        .bh-ct-foot {
+          display: flex; flex-direction: column; gap: 2px;
+        }
+        .bh-ct-name {
+          font-size: 12px;
+          font-family: monospace;
+          font-weight: 600;
+          letter-spacing: 0.02em;
+          color: rgba(255,255,255,0.85);
+          line-height: 1.2;
+        }
+        .bh-ct-preview {
+          font-size: 10px;
+          font-family: monospace;
+          opacity: 0.6;
+          line-height: 1.4;
+          margin-top: 3px;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+
+        .bh-ch-hint {
+          font-size: 10px; font-family: monospace; letter-spacing: 0.05em;
+          color: #2A2520; margin-top: 10px; text-align: center;
+        }
+
+        /* ══════════════════════════════════════════════════ */
+        /* ── HERO ── */
+        /* ══════════════════════════════════════════════════ */
+        .bh-hero {
+          position: relative; z-index: 1;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 64px 36px 80px; text-align: center;
+        }
         @media (max-width:640px) { .bh-hero { padding: 48px 18px 64px; } }
         .bh-hero-inner { max-width: 760px; width: 100%; }
+
         .bh-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 11px; font-family: monospace; letter-spacing: 0.05em; color: #5A5550; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); margin-bottom: 28px; }
         .bh-dot { width: 6px; height: 6px; border-radius: 50%; background: #E8734A; flex-shrink: 0; box-shadow: 0 0 8px rgba(232,115,74,0.8); animation: bhPulse 2s ease-in-out infinite; }
         @keyframes bhPulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.75)} }
+
         .bh-h1 { font-size: clamp(34px,7.5vw,82px); font-weight: 500; line-height: 1.05; letter-spacing: -0.04em; color: #F0EBE3; margin-bottom: 18px; }
         .bh-shimmer { background: linear-gradient(120deg, #E8734A 0%, #F5C842 30%, #1B9A6A 60%, #1D6AE5 80%, #E8734A 100%); background-size: 280% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: bhShimmer 7s linear infinite; }
         @keyframes bhShimmer { 0%{background-position:0% center}100%{background-position:280% center} }
         .bh-sub { font-size: clamp(14px,2vw,17px); line-height: 1.65; color: #4A4540; max-width: 460px; margin: 0 auto 32px; }
+
+        /* WP tiles */
         .bh-tile-grid { display: inline-grid; grid-template-columns: 190px 96px 96px 96px; grid-template-rows: 96px; gap: 3px; margin-bottom: 40px; }
         @media (max-width:560px) { .bh-tile-grid { grid-template-columns: 130px 68px 68px; grid-template-rows: 80px 80px; } .bh-tile-wide { grid-column: 1 / -1; } }
         .bh-tile { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; padding: 11px 13px; text-decoration: none; transition: opacity .15s, transform .1s; overflow: hidden; }
@@ -479,13 +649,17 @@ const Index = () => {
         .bh-tile-teal   { background: rgba(27,154,106,0.85); color: #fff; }
         .bh-tile-dark   { background: rgba(255,255,255,0.07); color: #F0EBE3; border: 1px solid rgba(255,255,255,0.1); }
         .bh-tl   { font-size: 11px; font-family: monospace; font-weight: 600; letter-spacing: 0.04em; line-height: 1.2; }
-        .bh-tsub { font-size: 9px; font-family: monospace; opacity: 0.65; margin-top: 3px; letter-spacing: 0.03em; }
+        .bh-tsub { font-size: 9px;  font-family: monospace; opacity: 0.65; margin-top: 3px; letter-spacing: 0.03em; }
+
+        /* Stats */
         .bh-stats { display: flex; align-items: center; justify-content: center; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); }
-        .bh-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 26px; border-right: 1px solid rgba(255,255,255,0.06); }
+        .bh-stat  { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 26px; border-right: 1px solid rgba(255,255,255,0.06); }
         .bh-stat:last-child { border-right: none; }
         @media (max-width:480px) { .bh-stat { padding: 0 14px; } }
         .bh-stat-n { font-size: 13px; font-weight: 500; color: #E8734A; }
         .bh-stat-l { font-size: 9px; font-family: monospace; letter-spacing: 0.06em; color: #3A3530; text-transform: uppercase; white-space: nowrap; }
+
+        .bh-scroll-cue { display: none; }
 
         /* ── Sections ── */
         .bh-sec { position: relative; z-index: 1; padding: 80px 36px; }
@@ -493,8 +667,11 @@ const Index = () => {
         .bh-eyebrow { font-size: 10px; font-family: monospace; letter-spacing: 0.13em; text-transform: uppercase; color: #3A3530; margin-bottom: 10px; }
         .bh-sh2 { font-size: clamp(22px,4vw,40px); font-weight: 500; letter-spacing: -0.03em; color: #F0EBE3; margin-bottom: 10px; }
         .bh-tc { text-align: center; }
+
+        /* Reveal */
         .bh-reveal { opacity: 0; transform: translateY(24px); transition: opacity .75s cubic-bezier(0.16,1,0.3,1), transform .75s cubic-bezier(0.16,1,0.3,1); }
         .bh-reveal.revealed { opacity: 1; transform: translateY(0); }
+        .bh-fade-up { animation: bhFadeUp .9s cubic-bezier(0.16,1,0.3,1) both; }
         @keyframes bhFadeUp { from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)} }
         @keyframes bhFadeIn { from{opacity:0}to{opacity:1} }
 
@@ -504,9 +681,9 @@ const Index = () => {
         .bh-video-box  { aspect-ratio: 16/9; overflow: hidden; background: #060c0c; }
         .bh-iframe { width: 100%; height: 100%; border: none; display: block; }
         .bh-corner { position: absolute; width: 14px; height: 14px; border-color: #E8734A; border-style: solid; opacity: 0.55; }
-        .bh-c-tl { top:-1px; left:-1px; border-width: 2px 0 0 2px; }
-        .bh-c-tr { top:-1px; right:-1px; border-width: 2px 2px 0 0; }
-        .bh-c-bl { bottom:-1px; left:-1px; border-width: 0 0 2px 2px; }
+        .bh-c-tl { top:-1px;  left:-1px;  border-width: 2px 0 0 2px; }
+        .bh-c-tr { top:-1px;  right:-1px; border-width: 2px 2px 0 0; }
+        .bh-c-bl { bottom:-1px; left:-1px;  border-width: 0 0 2px 2px; }
         .bh-c-br { bottom:-1px; right:-1px; border-width: 0 2px 2px 0; }
         .bh-cap { font-size: 10px; font-family: monospace; color: #2A2520; margin-top: 10px; letter-spacing: 0.05em; text-align: center; }
 
@@ -531,6 +708,8 @@ const Index = () => {
         .bh-join-outer { max-width: 500px; margin: 0 auto; text-align: center; }
         .bh-join-sub   { font-size: 13px; color: #4A4540; margin-bottom: 20px; }
         .bh-join-card  { text-align: left; padding: 26px; }
+
+        /* ── Form ── */
         .bh-input { width: 100%; padding: 10px 13px; font-size: 13px; color: #F0EBE3; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.08); outline: none; transition: border-color .2s; }
         .bh-input::placeholder { color: #2A2520; }
         .bh-input:focus { border-color: rgba(232,115,74,0.5); }
@@ -555,10 +734,48 @@ const Index = () => {
         .bh-footer-rule { height: 1px; background: rgba(255,255,255,0.04); margin-bottom: 20px; }
         .bh-footer-copy { font-size: 9.5px; font-family: monospace; color: #252520; line-height: 1.75; letter-spacing: 0.03em; max-width: 720px; }
         .bh-fcorp { color: #3A3530 !important; margin-bottom: 6px; font-size: 11px !important; letter-spacing: 0.07em; text-transform: uppercase; }
+
         .ico-xs { width: 12px; height: 12px; flex-shrink: 0; }
         .ico-sm { width: 14px; height: 14px; flex-shrink: 0; }
+
       `}</style>
     </div>
+  );
+};
+
+/* ── LandingTile — real channel tile, mirrors BentoTile from Home.tsx ───── */
+const LandingTile = ({ ch, cfg, size, preview }: { ch: any; cfg: any; size: "big" | "sm" | "bot"; preview?: any }) => {
+  if (!cfg) return null;
+  const Icon = cfg.icon;
+  const isPublic = !!ch?.is_public_visible;
+  const cls = `bh-ct bh-ct-${size}`;
+
+  const inner = (
+    <>
+      <Icon className="bh-ct-icon" strokeWidth={1.5} style={{ color: cfg.fg }} />
+      {!isPublic && <Lock className="bh-ct-lock" strokeWidth={1.5} />}
+      <div className="bh-ct-foot">
+        <span className="bh-ct-name" style={{ color: cfg.fg }}>{cfg.label}</span>
+        {isPublic && preview && (
+          <p className="bh-ct-preview" style={{ color: cfg.fg }}>
+            {(preview.title || preview.content || "").slice(0, 60)}
+          </p>
+        )}
+      </div>
+    </>
+  );
+
+  if (isPublic && ch?.slug) {
+    return (
+      <Link to={`/channel/${ch.slug}`} className={cls} style={{ background: cfg.bg, textDecoration: "none" }}>
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <a href="#join" className={cls} style={{ background: cfg.bg, textDecoration: "none", opacity: 0.82 }}>
+      {inner}
+    </a>
   );
 };
 
