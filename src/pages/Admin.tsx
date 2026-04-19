@@ -18,10 +18,8 @@ import { Check,
  AvatarBlock } from "@/components/AvatarBlock";
 import { Check,
  Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Check,
- Check, MessageSquare, Zap, Send } from "lucide-react";
-import { Check,
- Switch } from "@/components/ui/switch";
+import { Check, MessageSquare, Zap, Send } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 const PillBtn = ({
   variant, onClick, children, icon: Icon,
