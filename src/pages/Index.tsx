@@ -78,7 +78,7 @@ if (!loading && user && profile && !profile.is_approved) return <Navigate to="/w
   return (
     <div className="min-h-screen relative" style={{ background: "#0D0D0D" }}>
       {/* Top nav — wordmark routes to /home if logged in, else stays on / */}
-      <nav className="absolute top-0 inset-x-0 z-10 px-6 md:px-10 py-5 flex items-center justify-between">
+      <nav className="absolute top-0 inset-x-0 z-[60] px-6 md:px-10 py-5 flex items-center justify-between">
         <Link to={user ? "/home" : "/"} className="font-medium text-sm tracking-tight hover:text-primary transition-colors" style={{ color: "#F5F0EB" }}>
           builders house.
         </Link>
