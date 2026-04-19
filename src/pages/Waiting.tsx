@@ -131,13 +131,23 @@ const Waiting = () => {
       <BackLink />
       <div className="w-full max-w-2xl overflow-hidden" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
         <div className="p-6" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full" style={{ background: request.status === "approved" ? "#7AC8A0" : request.status === "rejected" ? "#E87474" : "#C9B99A" }} />
-            <h1 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
-              {request.status === "approved" ? "you're in. log in to continue." :
-               request.status === "rejected" ? "your application was declined." :
-               "your request is being reviewed."}
-            </h1>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: request.status === "approved" ? "#7AC8A0" : request.status === "rejected" ? "#E87474" : "#C9B99A" }} />
+              <h1 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
+                {request.status === "approved" ? "you have been approved." :
+                 request.status === "rejected" ? "your application was declined." :
+                 "your request is being reviewed."}
+              </h1>
+            </div>
+            {request.status === "approved" && (
+              <Link to="/signup">
+                <button className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+                  style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8, whiteSpace: "nowrap" }}>
+                  create your account ->
+                </button>
+              </Link>
+            )}
           </div>
           <p className="text-sm mt-1 ml-4" style={{ color: "#8A8480" }}>
             {request.status === "pending" ? "admin will reach out before making a decision." : ""}

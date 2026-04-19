@@ -1,15 +1,27 @@
-import { useEffect, useState, useRef } from "react";
-import { AppLayout } from "@/components/AppLayout";
-import { useAuth } from "@/context/AuthContext";
-import { Navigate } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { AvatarBlock } from "@/components/AvatarBlock";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MessageSquare, Zap, Send } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
+import { Check,
+ useEffect, useState, useRef } from "react";
+import { Check,
+ AppLayout } from "@/components/AppLayout";
+import { Check,
+ useAuth } from "@/context/AuthContext";
+import { Check,
+ Navigate } from "react-router-dom";
+import { Check,
+ Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Check,
+ supabase } from "@/integrations/supabase/client";
+import { Check,
+ Button } from "@/components/ui/button";
+import { Check,
+ toast } from "sonner";
+import { Check,
+ AvatarBlock } from "@/components/AvatarBlock";
+import { Check,
+ Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Check,
+ Check, MessageSquare, Zap, Send } from "lucide-react";
+import { Check,
+ Switch } from "@/components/ui/switch";
 
 const PillBtn = ({
   variant, onClick, children, icon: Icon,
@@ -73,6 +85,14 @@ const Admin = () => {
     if (error) { toast.error(error.message); return; }
     if (data?.error) { toast.error(data.error); return; }
     if (data?.password) setCredentialModal({ email: request.email, password: data.password });
+    loadAll();
+  };
+
+
+  const approve = async (request: any) => {
+    const { error } = await supabase.from("access_requests").update({ status: "approved" }).eq("id", request.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("approved — they can now sign up at /signup");
     loadAll();
   };
 
@@ -185,6 +205,7 @@ const Admin = () => {
                     ) : (
                       <div className="flex gap-1.5 flex-wrap">
                         <PillBtn variant="ghost" icon={MessageSquare} onClick={() => setDmRequest(r)}>dm first</PillBtn>
+                        <PillBtn variant="ghost" icon={Check} onClick={() => approve(r)}>approve</PillBtn>
                         <PillBtn variant="primary" icon={Zap} onClick={() => yoloOnboard(r)}>yolo onboard</PillBtn>
                         <PillBtn variant="ghost" onClick={() => reject(r)}>reject</PillBtn>
                       </div>
@@ -225,7 +246,7 @@ const Admin = () => {
           </TabsContent>
         </Tabs>
 
-        <DmThread request={dmRequest} onClose={() => { setDmRequest(null); loadAll(); }} onApprove={(req) => yoloOnboard(req)} onReject={reject} />
+        <DmThread request={dmRequest} onClose={() => { setDmRequest(null); loadAll(); }} onApprove={(req) => yoloOnboard(req)} onApproveSelf={(req) => approve(req)} onReject={reject} />
 
         <Dialog open={!!credentialModal} onOpenChange={(o) => !o && setCredentialModal(null)}>
           <DialogContent style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>

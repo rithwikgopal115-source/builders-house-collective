@@ -14,6 +14,7 @@ import ProfileEdit from "./pages/ProfileEdit";
 import Admin from "./pages/Admin";
 import Tasks from "./pages/Tasks";
 import Notifications from "./pages/Notifications";
+import Signup from "./pages/Signup";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/waiting" element={<Waiting />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="/pending" element={<Waiting />} />
             <Route path="/home" element={<Home />} />
             <Route path="/channel/:slug" element={<Channel />} />
