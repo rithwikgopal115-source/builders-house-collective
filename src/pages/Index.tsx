@@ -1,13 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Bell } from "lucide-react";
+import { Bell, ArrowRight, ArrowDown } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const PLACEHOLDER_VIDEO = "https://www.youtube.com/embed/dQw4w9WgXcQ";
 
+/* ─── Intersection observer hook for scroll-in animations ─────────────────── */
+const useReveal = () => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { el.classList.add("revealed"); obs.disconnect(); } },
+      { threshold: 0.12 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return ref;
+};
+
+/* ─── Main page ───────────────────────────────────────────────────────────── */
 const Index = () => {
   const nav = useNavigate();
   const { user, profile, loading } = useAuth();
@@ -28,17 +45,13 @@ const Index = () => {
     if (!pendingEmail) return;
     const fetchStatus = async () => {
       const { data: req } = await supabase
-        .from("access_requests")
-        .select("id, status")
-        .eq("email", pendingEmail.toLowerCase())
-        .maybeSingle();
+        .from("access_requests").select("id, status")
+        .eq("email", pendingEmail.toLowerCase()).maybeSingle();
       if (!req) return;
       setRequestStatus(req.status);
       const { count } = await supabase
-        .from("onboarding_messages")
-        .select("id", { count: "exact", head: true })
-        .eq("request_id", req.id)
-        .eq("sender_type", "admin");
+        .from("onboarding_messages").select("id", { count: "exact", head: true })
+        .eq("request_id", req.id).eq("sender_type", "admin");
       setUnreadCount(count ?? 0);
     };
     fetchStatus();
@@ -48,120 +61,172 @@ const Index = () => {
   if (!loading && user && profile?.is_approved) return <Navigate to="/home" replace />;
   if (!loading && user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
-  return (
-    <div className="min-h-screen relative overflow-x-hidden" style={{ background: "#0D0D0D", color: "#F5F0EB" }}>
+  const vslRef = useReveal();
+  const whyRef = useReveal();
+  const joinRef = useReveal();
 
-      {/* ── Animated background orbs ──────────────────────────────────── */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
-        <div className="grain" />
+  return (
+    <div className="bh-root">
+
+      {/* ── Canvas: orbs + grain ─────────────────────────────────────── */}
+      <div className="bh-canvas" aria-hidden>
+        <div className="bh-orb bh-orb-coral" />
+        <div className="bh-orb bh-orb-blue" />
+        <div className="bh-orb bh-orb-purple" />
+        <div className="bh-grain" />
       </div>
 
-      {/* ── Nav ───────────────────────────────────────────────────────── */}
-      <nav className="fixed top-0 inset-x-0 z-[60] px-6 md:px-10 py-5 flex items-center justify-between"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", background: "rgba(13,13,13,0.6)" }}>
-        <Link to={user ? "/home" : "/"} className="font-medium text-sm tracking-tight hover:text-primary transition-colors" style={{ color: "#F5F0EB" }}>
-          builders house.
-        </Link>
-        {user ? (
-          <Link to="/home" className="text-xs font-mono uppercase tracking-wider hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>dashboard &rarr;</Link>
-        ) : (
-          <Link to="/login" className="text-xs font-mono uppercase tracking-wider hover:opacity-80 transition-opacity" style={{ color: "#8A8480" }}>login</Link>
-        )}
-      </nav>
+      {/* ── Nav ─────────────────────────────────────────────────────── */}
+      <header className="bh-nav">
+        <Link to={user ? "/home" : "/"} className="bh-wordmark">builders house.</Link>
+        <nav className="bh-nav-links">
+          {user ? (
+            <Link to="/home" className="bh-nav-link">dashboard <ArrowRight className="bh-icon-xs" /></Link>
+          ) : (
+            <Link to="/login" className="bh-nav-link">login</Link>
+          )}
+        </nav>
+      </header>
 
-      {/* ── Returning visitor notification banner ─────────────────────── */}
+      {/* ── Returning visitor pill ───────────────────────────────────── */}
       {!user && pendingEmail && (
-        <div className="fixed top-16 inset-x-0 z-50 flex justify-center px-6 pointer-events-none">
-          <Link
-            to="/waiting"
-            className="pointer-events-auto flex items-center gap-2.5 px-4 py-2 text-xs font-mono transition-opacity hover:opacity-80 fade-in"
+        <div className="bh-pill-wrap">
+          <Link to="/waiting" className="bh-pill"
             style={{
-              background: requestStatus === "approved" ? "rgba(122,200,160,0.12)" : unreadCount > 0 ? "rgba(232,115,74,0.12)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${requestStatus === "approved" ? "rgba(122,200,160,0.3)" : unreadCount > 0 ? "rgba(232,115,74,0.3)" : "rgba(255,255,255,0.08)"}`,
-              borderRadius: 99,
-              color: requestStatus === "approved" ? "#7AC8A0" : unreadCount > 0 ? "#E8734A" : "#8A8480",
-              backdropFilter: "blur(12px)",
-            }}
+              "--pill-bg": requestStatus === "approved" ? "rgba(122,200,160,0.1)" : unreadCount > 0 ? "rgba(232,115,74,0.1)" : "rgba(255,255,255,0.04)",
+              "--pill-border": requestStatus === "approved" ? "rgba(122,200,160,0.3)" : unreadCount > 0 ? "rgba(232,115,74,0.3)" : "rgba(255,255,255,0.1)",
+              "--pill-color": requestStatus === "approved" ? "#7AC8A0" : unreadCount > 0 ? "#E8734A" : "#8A8480",
+            } as any}
           >
-            <Bell className="h-3 w-3 flex-shrink-0" />
+            <Bell className="bh-icon-xs" />
             {requestStatus === "approved"
-              ? "you're approved — create your account →"
+              ? "you're approved — create your account"
               : unreadCount > 0
-                ? `${unreadCount} message${unreadCount > 1 ? "s" : ""} from the team →`
-                : "your request is being reviewed →"}
+                ? `${unreadCount} message${unreadCount > 1 ? "s" : ""} from the team`
+                : "your request is being reviewed"}
+            <ArrowRight className="bh-icon-xs" />
           </Link>
         </div>
       )}
 
-      {/* ── Hero ──────────────────────────────────────────────────────── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center px-6 text-center pt-20">
-        <div className="fade-up max-w-3xl mx-auto">
-          <p className="text-xs font-mono uppercase tracking-widest mb-6 opacity-50">builders house</p>
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-medium leading-[1.08] mb-6" style={{ letterSpacing: "-0.04em" }}>
-            where a-players connect,
-            <br />
-            <span className="gradient-text">communicate, and share.</span>
+      {/* ── Hero ────────────────────────────────────────────────────── */}
+      <section className="bh-hero">
+        <div className="bh-hero-inner">
+
+          <div className="bh-badge">
+            <span className="bh-badge-dot" />
+            a room for builders · free to join
+          </div>
+
+          <h1 className="bh-hero-h1">
+            Where builders
+            <br className="bh-hero-br" />
+            <span className="bh-shimmer">connect, share, and</span>
+            <br className="bh-hero-br" />
+            actually get things done.
           </h1>
-          <p className="text-base md:text-lg max-w-xl mx-auto mb-10 leading-relaxed" style={{ color: "#8A8480" }}>
-            a small, private room for founders and builders who are actually shipping something — not just talking about it.
+
+          <p className="bh-hero-sub">
+            A small online space for people who are building something —
+            share what you're working on, find resources, and talk to
+            others who get it.
           </p>
-          <a href="#join" className="inline-flex items-center gap-2 text-sm font-mono px-5 py-3 rounded-full transition-all hover:scale-105 active:scale-95"
-            style={{ background: "#E8734A", color: "#0D0D0D" }}>
-            request access &darr;
-          </a>
+
+          <div className="bh-hero-ctas">
+            <a href="#join" className="bh-cta-primary">
+              join the house
+              <ArrowDown className="bh-icon-sm" />
+            </a>
+            <a href="#watch" className="bh-cta-ghost">
+              see what's inside
+            </a>
+          </div>
+
+          <div className="bh-stats">
+            {[
+              { n: "free", l: "always" },
+              { n: "zero", l: "hustle bro energy" },
+              { n: "real", l: "conversations" },
+            ].map((s) => (
+              <div key={s.l} className="bh-stat">
+                <span className="bh-stat-n">{s.n}</span>
+                <span className="bh-stat-l">{s.l}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Scroll hint */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-30 animate-bounce">
-          <div className="h-8 w-px" style={{ background: "linear-gradient(to bottom, transparent, #F5F0EB)" }} />
+        <div className="bh-scroll-cue">
+          <div className="bh-scroll-line" />
         </div>
       </section>
 
-      {/* ── VSL section ───────────────────────────────────────────────── */}
-      <section className="relative px-6 md:px-10 py-16 md:py-24">
-        <div className="max-w-3xl mx-auto fade-up">
-          <p className="text-xs font-mono uppercase tracking-widest text-center mb-3 opacity-40">watch first</p>
-          <h2 className="text-xl md:text-2xl font-medium text-center mb-8" style={{ letterSpacing: "-0.03em" }}>
-            what is builders house?
-          </h2>
-          <div className="glass-card overflow-hidden" style={{ borderRadius: 20, padding: 8 }}>
-            <div className="aspect-video overflow-hidden" style={{ borderRadius: 14 }}>
+      {/* ── VSL ─────────────────────────────────────────────────────── */}
+      <section id="watch" className="bh-section">
+        <div ref={vslRef} className="bh-reveal bh-vsl-wrap">
+          <div className="bh-section-label">watch first</div>
+          <h2 className="bh-section-h2">What is builders house?</h2>
+          <div className="bh-video-frame">
+            <div className="bh-video-inner">
               <iframe
                 src={PLACEHOLDER_VIDEO}
-                className="w-full h-full"
+                className="bh-iframe"
                 allowFullScreen
                 title="builders house — what is this?"
               />
             </div>
+            <div className="bh-corner bh-corner-tl" />
+            <div className="bh-corner bh-corner-tr" />
+            <div className="bh-corner bh-corner-bl" />
+            <div className="bh-corner bh-corner-br" />
           </div>
-          <p className="text-center text-xs font-mono mt-4 opacity-30">3 minutes · worth it</p>
+          <p className="bh-video-caption">3 minutes · worth every second</p>
         </div>
       </section>
 
-      {/* ── Why section ───────────────────────────────────────────────── */}
-      <section className="relative px-6 md:px-10 py-12 md:py-16">
-        <div className="max-w-3xl mx-auto grid md:grid-cols-3 gap-4">
+      {/* ── Why ─────────────────────────────────────────────────────── */}
+      <section className="bh-section bh-why-section">
+        <div ref={whyRef} className="bh-reveal bh-why-grid">
           {[
-            { label: "signal only", body: "no noise, no hustle bro energy. everyone here is making something real." },
-            { label: "small on purpose", body: "capped. curated. every member is handpicked. quality over growth." },
-            { label: "earned, not bought", body: "you don't pay to get in. you apply. if you're building, you belong." },
+            {
+              n: "01",
+              label: "no noise",
+              body: "No viral takes, no \"10x your productivity\" threads. Just people sharing what they're building and what's actually working for them.",
+            },
+            {
+              n: "02",
+              label: "kept small",
+              body: "It's not a big public forum. It's more like a group chat that doesn't suck — small enough that people actually know each other.",
+            },
+            {
+              n: "03",
+              label: "free to join",
+              body: "You just tell us what you're working on. That's it. If you're building something, you're welcome here.",
+            },
           ].map((item) => (
-            <div key={item.label} className="glass-card p-5 fade-up">
-              <p className="text-xs font-mono uppercase tracking-wider mb-3" style={{ color: "#E8734A" }}>{item.label}</p>
-              <p className="text-sm leading-relaxed" style={{ color: "#8A8480" }}>{item.body}</p>
+            <div key={item.n} className="bh-why-card">
+              <div className="bh-why-n">{item.n}</div>
+              <h3 className="bh-why-label">{item.label}</h3>
+              <p className="bh-why-body">{item.body}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── Join section ──────────────────────────────────────────────── */}
-      <section id="join" className="relative px-6 md:px-10 py-16 md:py-24 scroll-mt-20">
-        <div className="max-w-md mx-auto fade-up">
-          <p className="text-xs font-mono uppercase tracking-widest text-center mb-3 opacity-40">the door</p>
-          <div className="glass-card p-7 md:p-8" style={{ borderRadius: 20 }}>
+      {/* ── Divider quote ────────────────────────────────────────────── */}
+      <section className="bh-quote-section">
+        <blockquote className="bh-quote">
+          "Finally a place that doesn't feel like a LinkedIn comment section."
+        </blockquote>
+      </section>
+
+      {/* ── Join ────────────────────────────────────────────────────── */}
+      <section id="join" className="bh-section bh-join-section">
+        <div ref={joinRef} className="bh-reveal bh-join-wrap">
+          <div className="bh-section-label">the door</div>
+          <h2 className="bh-section-h2">Come hang.</h2>
+          <p className="bh-join-sub">Tell us what you're working on and we'll get you in. Takes 2 minutes.</p>
+          <div className="bh-join-card">
             {pendingEmail && !user
               ? <ReturningVisitorPanel
                   email={pendingEmail}
@@ -180,81 +245,486 @@ const Index = () => {
         </div>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────────────── */}
-      <footer className="relative px-6 md:px-10 py-8 text-center border-t" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-        <p className="text-xs font-mono opacity-20">builders house · a private room for people who are building</p>
+      {/* ── Footer ──────────────────────────────────────────────────── */}
+      <footer className="bh-footer">
+        <span className="bh-footer-text">builders house</span>
+        <span className="bh-footer-sep">·</span>
+        <span className="bh-footer-text">a private room for people who are building</span>
       </footer>
 
       <style>{`
-        .orb {
+        .bh-root {
+          min-height: 100vh;
+          background: #0A0A0A;
+          color: #F0EBE3;
+          font-family: inherit;
+          overflow-x: hidden;
+          position: relative;
+        }
+        .bh-canvas {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          overflow: hidden;
+          z-index: 0;
+        }
+        .bh-orb {
           position: absolute;
           border-radius: 50%;
-          filter: blur(120px);
-          opacity: 0.18;
-          animation: drift 18s ease-in-out infinite alternate;
+          filter: blur(130px);
+          animation: bhDrift ease-in-out infinite alternate;
         }
-        .orb-1 {
-          width: 600px; height: 600px;
-          background: #E8734A;
-          top: -200px; left: -150px;
-          animation-duration: 22s;
+        .bh-orb-coral {
+          width: 700px; height: 700px;
+          background: radial-gradient(circle, #E8734A 0%, transparent 70%);
+          opacity: 0.12;
+          top: -250px; left: -200px;
+          animation-duration: 24s;
         }
-        .orb-2 {
-          width: 500px; height: 500px;
-          background: #1D6AE5;
-          top: 30%; right: -180px;
-          animation-duration: 28s;
-          animation-delay: -8s;
+        .bh-orb-blue {
+          width: 550px; height: 550px;
+          background: radial-gradient(circle, #1D6AE5 0%, transparent 70%);
+          opacity: 0.10;
+          top: 35%; right: -200px;
+          animation-duration: 30s;
+          animation-delay: -10s;
         }
-        .orb-3 {
-          width: 400px; height: 400px;
-          background: #7C3AED;
-          bottom: 10%; left: 20%;
+        .bh-orb-purple {
+          width: 450px; height: 450px;
+          background: radial-gradient(circle, #7C3AED 0%, transparent 70%);
+          opacity: 0.10;
+          bottom: 5%; left: 15%;
           animation-duration: 20s;
-          animation-delay: -14s;
+          animation-delay: -16s;
         }
-        @keyframes drift {
-          0%   { transform: translate(0, 0) scale(1); }
-          33%  { transform: translate(40px, -30px) scale(1.05); }
-          66%  { transform: translate(-20px, 50px) scale(0.97); }
-          100% { transform: translate(30px, 20px) scale(1.03); }
+        @keyframes bhDrift {
+          0%   { transform: translate(0px,   0px)  scale(1);    }
+          33%  { transform: translate(50px,  -40px) scale(1.06); }
+          66%  { transform: translate(-30px,  60px) scale(0.96); }
+          100% { transform: translate(40px,   25px) scale(1.04); }
         }
-        .grain {
+        .bh-grain {
           position: absolute; inset: 0;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E");
-          background-size: 200px 200px;
-          opacity: 0.04;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/%3E%3C/svg%3E");
+          background-size: 220px 220px;
+          opacity: 0.035;
+        }
+        .bh-nav {
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          z-index: 60;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 40px;
+          background: rgba(10,10,10,0.55);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        @media (max-width: 640px) { .bh-nav { padding: 18px 20px; } }
+        .bh-wordmark {
+          font-size: 14px;
+          font-weight: 500;
+          letter-spacing: -0.02em;
+          color: #F0EBE3;
+          text-decoration: none;
+          transition: opacity .2s;
+        }
+        .bh-wordmark:hover { opacity: 0.7; }
+        .bh-nav-links { display: flex; align-items: center; gap: 24px; }
+        .bh-nav-link {
+          font-size: 12px;
+          font-family: monospace;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: #6B6560;
+          text-decoration: none;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          transition: color .2s;
+        }
+        .bh-nav-link:hover { color: #F0EBE3; }
+        .bh-pill-wrap {
+          position: fixed;
+          top: 72px; left: 0; right: 0;
+          z-index: 50;
+          display: flex;
+          justify-content: center;
+          padding: 0 20px;
           pointer-events: none;
         }
-        .gradient-text {
-          background: linear-gradient(135deg, #E8734A 0%, #F5C518 50%, #E8734A 100%);
-          background-size: 200% auto;
+        .bh-pill {
+          pointer-events: auto;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 14px;
+          font-size: 11px;
+          font-family: monospace;
+          text-decoration: none;
+          border-radius: 99px;
+          background: var(--pill-bg);
+          border: 1px solid var(--pill-border);
+          color: var(--pill-color);
+          backdrop-filter: blur(12px);
+          transition: opacity .2s;
+          animation: bhFadeIn .4s ease both;
+        }
+        .bh-pill:hover { opacity: 0.8; }
+        .bh-hero {
+          position: relative;
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 120px 40px 80px;
+          text-align: center;
+          z-index: 1;
+        }
+        @media (max-width: 640px) { .bh-hero { padding: 100px 20px 60px; } }
+        .bh-hero-inner {
+          max-width: 780px;
+          width: 100%;
+          animation: bhFadeUp .9s cubic-bezier(0.16,1,0.3,1) both;
+        }
+        .bh-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 14px;
+          font-size: 11px;
+          font-family: monospace;
+          letter-spacing: 0.05em;
+          color: #6B6560;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 99px;
+          margin-bottom: 32px;
+        }
+        .bh-badge-dot {
+          width: 6px; height: 6px;
+          border-radius: 50%;
+          background: #E8734A;
+          box-shadow: 0 0 8px rgba(232,115,74,0.6);
+          animation: bhPulse 2s ease-in-out infinite;
+        }
+        @keyframes bhPulse {
+          0%,100% { opacity: 1; transform: scale(1); }
+          50%      { opacity: 0.6; transform: scale(0.85); }
+        }
+        .bh-hero-h1 {
+          font-size: clamp(36px, 7vw, 80px);
+          font-weight: 500;
+          line-height: 1.05;
+          letter-spacing: -0.04em;
+          color: #F0EBE3;
+          margin-bottom: 24px;
+        }
+        .bh-hero-br { display: block; }
+        .bh-shimmer {
+          background: linear-gradient(120deg, #E8734A 0%, #F5C842 40%, #E8734A 80%);
+          background-size: 220% auto;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
-          animation: shimmer 4s linear infinite;
+          animation: bhShimmer 5s linear infinite;
         }
-        @keyframes shimmer {
-          0%   { background-position: 0% center; }
-          100% { background-position: 200% center; }
+        @keyframes bhShimmer {
+          0%   { background-position: 0%   center; }
+          100% { background-position: 220% center; }
         }
-        .glass-card {
+        .bh-hero-sub {
+          font-size: clamp(15px, 2vw, 18px);
+          line-height: 1.65;
+          color: #6B6560;
+          max-width: 520px;
+          margin: 0 auto 40px;
+        }
+        .bh-hero-ctas {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 56px;
+        }
+        .bh-cta-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 28px;
+          font-size: 14px;
+          font-weight: 500;
+          font-family: monospace;
+          letter-spacing: 0.03em;
+          color: #0A0A0A;
+          background: #E8734A;
+          border-radius: 99px;
+          text-decoration: none;
+          transition: transform .2s, box-shadow .2s;
+        }
+        .bh-cta-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 30px rgba(232,115,74,0.35);
+        }
+        .bh-cta-primary:active { transform: translateY(0); }
+        .bh-cta-ghost {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 14px 24px;
+          font-size: 13px;
+          font-family: monospace;
+          letter-spacing: 0.03em;
+          color: #6B6560;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 99px;
+          text-decoration: none;
+          transition: color .2s, background .2s;
+        }
+        .bh-cta-ghost:hover { color: #F0EBE3; background: rgba(255,255,255,0.07); }
+        .bh-stats {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding-top: 16px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .bh-stat {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          padding: 0 32px;
+          border-right: 1px solid rgba(255,255,255,0.06);
+        }
+        .bh-stat:last-child { border-right: none; }
+        @media (max-width: 500px) { .bh-stat { padding: 0 16px; } }
+        .bh-stat-n {
+          font-size: 13px;
+          font-weight: 500;
+          color: #E8734A;
+        }
+        .bh-stat-l {
+          font-size: 10px;
+          font-family: monospace;
+          letter-spacing: 0.05em;
+          color: #4A4540;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .bh-scroll-cue {
+          position: absolute;
+          bottom: 32px;
+          left: 50%;
+          transform: translateX(-50%);
+          animation: bhBounce 2.4s ease-in-out infinite;
+        }
+        .bh-scroll-line {
+          width: 1px;
+          height: 40px;
+          background: linear-gradient(to bottom, rgba(240,235,227,0), rgba(240,235,227,0.2));
+        }
+        @keyframes bhBounce {
+          0%,100% { transform: translateX(-50%) translateY(0); }
+          50%      { transform: translateX(-50%) translateY(8px); }
+        }
+        .bh-section {
+          position: relative;
+          z-index: 1;
+          padding: 80px 40px;
+        }
+        @media (max-width: 640px) { .bh-section { padding: 60px 20px; } }
+        .bh-section-label {
+          font-size: 10px;
+          font-family: monospace;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: #4A4540;
+          margin-bottom: 12px;
+          text-align: center;
+        }
+        .bh-section-h2 {
+          font-size: clamp(24px, 4vw, 40px);
+          font-weight: 500;
+          letter-spacing: -0.03em;
+          color: #F0EBE3;
+          text-align: center;
+          margin-bottom: 12px;
+        }
+        .bh-reveal {
+          opacity: 0;
+          transform: translateY(32px);
+          transition: opacity .7s cubic-bezier(0.16,1,0.3,1), transform .7s cubic-bezier(0.16,1,0.3,1);
+        }
+        .bh-reveal.revealed { opacity: 1; transform: translateY(0); }
+        .bh-vsl-wrap { max-width: 800px; margin: 0 auto; }
+        .bh-video-frame {
+          position: relative;
+          padding: 10px;
           background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 20px;
+          backdrop-filter: blur(12px);
+        }
+        .bh-video-inner {
+          aspect-ratio: 16/9;
+          overflow: hidden;
+          border-radius: 12px;
+          background: #111;
+        }
+        .bh-iframe { width: 100%; height: 100%; border: none; display: block; }
+        .bh-corner {
+          position: absolute;
+          width: 16px; height: 16px;
+          border-color: #E8734A;
+          border-style: solid;
+          opacity: 0.5;
+        }
+        .bh-corner-tl { top: -1px; left: -1px; border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
+        .bh-corner-tr { top: -1px; right: -1px; border-width: 2px 2px 0 0; border-radius: 0 4px 0 0; }
+        .bh-corner-bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; border-radius: 0 0 0 4px; }
+        .bh-corner-br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
+        .bh-video-caption {
+          text-align: center;
+          font-size: 11px;
+          font-family: monospace;
+          color: #3A3530;
+          margin-top: 14px;
+          letter-spacing: 0.04em;
+        }
+        .bh-why-section { max-width: 1000px; margin: 0 auto; }
+        .bh-why-grid {
+          max-width: 900px;
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+        }
+        @media (max-width: 700px) { .bh-why-grid { grid-template-columns: 1fr; } }
+        .bh-why-card {
+          padding: 28px 24px;
+          background: rgba(255,255,255,0.025);
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 16px;
+          backdrop-filter: blur(8px);
+          transition: background .2s, border-color .2s;
+        }
+        .bh-why-card:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.10); }
+        .bh-why-n {
+          font-size: 10px;
+          font-family: monospace;
+          letter-spacing: 0.1em;
+          color: #E8734A;
+          margin-bottom: 14px;
+          opacity: 0.7;
+        }
+        .bh-why-label {
+          font-size: 15px;
+          font-weight: 500;
+          letter-spacing: -0.02em;
+          color: #F0EBE3;
+          margin-bottom: 10px;
+        }
+        .bh-why-body { font-size: 13px; line-height: 1.7; color: #5A5550; }
+        .bh-quote-section {
+          position: relative;
+          z-index: 1;
+          padding: 40px 40px 20px;
+          text-align: center;
+        }
+        .bh-quote {
+          font-size: clamp(18px, 3vw, 28px);
+          font-weight: 400;
+          font-style: italic;
+          letter-spacing: -0.02em;
+          color: rgba(240,235,227,0.15);
+          max-width: 600px;
+          margin: 0 auto;
+          line-height: 1.5;
+        }
+        .bh-join-section { max-width: 560px; margin: 0 auto; }
+        .bh-join-wrap { text-align: center; }
+        .bh-join-sub { font-size: 14px; color: #5A5550; margin-bottom: 28px; line-height: 1.6; }
+        .bh-join-card {
+          text-align: left;
+          padding: 32px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 20px;
           backdrop-filter: blur(16px);
           -webkit-backdrop-filter: blur(16px);
         }
-        .fade-up {
-          animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both;
+        .bh-input {
+          width: 100%;
+          padding: 11px 14px;
+          font-size: 14px;
+          color: #F0EBE3;
+          background: rgba(0,0,0,0.5);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 10px;
+          outline: none;
+          transition: border-color .2s;
+          box-sizing: border-box;
         }
-        .fade-in {
-          animation: fadeIn 0.4s ease both;
+        .bh-input::placeholder { color: #3A3530; }
+        .bh-input:focus { border-color: rgba(232,115,74,0.5); }
+        .bh-textarea { resize: none; }
+        .bh-stage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .bh-stage-btn {
+          text-align: left;
+          padding: 10px 12px;
+          font-size: 12px;
+          color: #5A5550;
+          background: rgba(0,0,0,0.4);
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all .15s;
         }
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(24px); }
+        .bh-stage-btn:hover { color: #F0EBE3; border-color: rgba(255,255,255,0.14); }
+        .bh-stage-btn.active { color: #E8734A; background: rgba(232,115,74,0.08); border-color: rgba(232,115,74,0.4); }
+        .bh-submit {
+          width: 100%;
+          padding: 13px;
+          font-size: 13px;
+          font-weight: 500;
+          font-family: monospace;
+          letter-spacing: 0.04em;
+          color: #0A0A0A;
+          background: #E8734A;
+          border: none;
+          border-radius: 10px;
+          cursor: pointer;
+          transition: opacity .2s, transform .15s;
+        }
+        .bh-submit:hover { opacity: 0.88; transform: translateY(-1px); }
+        .bh-submit:active { transform: translateY(0); }
+        .bh-submit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .bh-form-space { display: flex; flex-direction: column; gap: 10px; }
+        .bh-footer {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 28px 40px;
+          border-top: 1px solid rgba(255,255,255,0.04);
+        }
+        .bh-footer-text { font-size: 11px; font-family: monospace; color: #2A2520; letter-spacing: 0.04em; }
+        .bh-footer-sep { color: #2A2520; font-size: 11px; }
+        .bh-icon-xs { width: 12px; height: 12px; flex-shrink: 0; }
+        .bh-icon-sm { width: 14px; height: 14px; flex-shrink: 0; }
+        @keyframes bhFadeUp {
+          from { opacity: 0; transform: translateY(28px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes fadeIn {
+        @keyframes bhFadeIn {
           from { opacity: 0; }
           to   { opacity: 1; }
         }
@@ -286,17 +756,14 @@ const StandardJoinPanel = () => {
     if (error) {
       if (error.code === "23505" || error.message?.includes("unique") || error.message?.includes("duplicate")) {
         try { localStorage.setItem("bh-pending-email", email.trim().toLowerCase()); } catch {}
-        nav("/waiting");
-        return;
+        nav("/waiting"); return;
       }
-      toast.error(error.message);
-      return;
+      toast.error(error.message); return;
     }
     const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
     if (admins?.length) {
       await supabase.from("notifications").insert(admins.map((a: any) => ({
-        recipient_id: a.id,
-        type: "access_request",
+        recipient_id: a.id, type: "access_request",
         content: `new access request from ${name.trim()}`,
       })));
     }
@@ -304,46 +771,29 @@ const StandardJoinPanel = () => {
     setSubmitted(true);
   };
 
-  if (submitted) {
-    return (
-      <div className="py-6 text-center">
-        <p className="text-lg font-medium mb-2" style={{ color: "#F5F0EB" }}>got it.</p>
-        <p className="text-sm mb-4" style={{ color: "#8A8480" }}>you'll hear back soon.</p>
-        <Link to="/waiting" className="text-xs font-mono hover:opacity-80 transition-opacity" style={{ color: "#E8734A" }}>
-          view your request status &rarr;
-        </Link>
-      </div>
-    );
-  }
+  if (submitted) return (
+    <div style={{ textAlign: "center", padding: "24px 0" }}>
+      <p style={{ fontSize: 18, fontWeight: 500, color: "#F0EBE3", marginBottom: 8 }}>got it.</p>
+      <p style={{ fontSize: 13, color: "#5A5550", marginBottom: 16 }}>you'll hear back soon.</p>
+      <Link to="/waiting" style={{ fontSize: 12, fontFamily: "monospace", color: "#E8734A", textDecoration: "none" }}>
+        view your request status →
+      </Link>
+    </div>
+  );
 
   return (
     <div>
-      <h2 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>want in?</h2>
-      <p className="text-xs font-mono mb-6" style={{ color: "#8A8480" }}>we read every application.</p>
-      <div className="space-y-3">
-        <PanelInput value={name} onChange={setName} placeholder="name" />
-        <PanelInput value={email} onChange={setEmail} placeholder="email" type="email" />
-        <textarea
-          value={building}
-          onChange={(e) => setBuilding(e.target.value)}
-          placeholder="what are you building right now?"
-          rows={4}
-          maxLength={2000}
-          className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none"
-          style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F0EB", borderRadius: 10 }}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <StageOption active={stage === "figuring"} onClick={() => setStage("figuring")} label="still figuring it out" />
-          <StageOption active={stage === "shipping"} onClick={() => setStage("shipping")} label="shipping & making money" />
+      <p style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: "#F0EBE3", marginBottom: 4 }}>want in?</p>
+      <p style={{ fontSize: 12, fontFamily: "monospace", color: "#4A4540", marginBottom: 22 }}>we read every application.</p>
+      <div className="bh-form-space">
+        <input className="bh-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="your name" />
+        <input className="bh-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email address" type="email" />
+        <textarea className="bh-input bh-textarea" value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="what are you building right now?" rows={4} maxLength={2000} />
+        <div className="bh-stage-grid">
+          <button className={`bh-stage-btn${stage === "figuring" ? " active" : ""}`} onClick={() => setStage("figuring")}>still figuring it out</button>
+          <button className={`bh-stage-btn${stage === "shipping" ? " active" : ""}`} onClick={() => setStage("shipping")}>shipping & making money</button>
         </div>
-        <Button
-          onClick={submit}
-          disabled={busy}
-          className="w-full"
-          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10, fontFamily: "monospace", letterSpacing: "0.04em" }}
-        >
-          {busy ? "sending…" : "request access"}
-        </Button>
+        <button className="bh-submit" onClick={submit} disabled={busy}>{busy ? "sending…" : "request access →"}</button>
       </div>
     </div>
   );
@@ -354,59 +804,39 @@ const ReturningVisitorPanel = ({ email, status, unreadCount, onClear }: {
 }) => {
   const nav = useNavigate();
 
-  if (status === "approved") {
-    return (
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: "#7AC8A0" }} />
-          <h2 className="text-lg font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>you're approved.</h2>
-        </div>
-        <p className="text-sm mb-6" style={{ color: "#8A8480" }}>create your account to get in.</p>
-        <Button
-          onClick={() => nav(`/signup?email=${encodeURIComponent(email)}`)}
-          className="w-full"
-          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10 }}
-        >
-          create account &rarr;
-        </Button>
-        <button onClick={onClear} className="text-xs font-mono mt-3 block w-full text-center" style={{ color: "#4A4A4A" }}>
-          not you?
-        </button>
+  if (status === "approved") return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#7AC8A0", flexShrink: 0, display: "inline-block" }} />
+        <p style={{ fontSize: 17, fontWeight: 500, color: "#F0EBE3", letterSpacing: "-0.02em" }}>you're approved.</p>
       </div>
-    );
-  }
+      <p style={{ fontSize: 13, color: "#5A5550", marginBottom: 20 }}>create your account to get in.</p>
+      <button className="bh-submit" onClick={() => nav(`/signup?email=${encodeURIComponent(email)}`)}>create account →</button>
+      <button onClick={onClear} style={{ display: "block", width: "100%", textAlign: "center", marginTop: 12, fontSize: 11, fontFamily: "monospace", color: "#3A3530", background: "none", border: "none", cursor: "pointer" }}>not you?</button>
+    </div>
+  );
 
-  if (status === "rejected") {
-    return (
-      <div className="py-6 text-center">
-        <p className="text-sm mb-4" style={{ color: "#8A8480" }}>your application was declined.</p>
-        <button onClick={onClear} className="text-xs font-mono" style={{ color: "#E8734A" }}>
-          try with a different email
-        </button>
-      </div>
-    );
-  }
+  if (status === "rejected") return (
+    <div style={{ textAlign: "center", padding: "24px 0" }}>
+      <p style={{ fontSize: 13, color: "#5A5550", marginBottom: 16 }}>your application was declined.</p>
+      <button onClick={onClear} style={{ fontSize: 12, fontFamily: "monospace", color: "#E8734A", background: "none", border: "none", cursor: "pointer" }}>try with a different email</button>
+    </div>
+  );
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-1">
-        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: "#C9B99A" }} />
-        <h2 className="text-base font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>request submitted.</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#C9B99A", flexShrink: 0, display: "inline-block" }} />
+        <p style={{ fontSize: 15, fontWeight: 500, color: "#F0EBE3", letterSpacing: "-0.02em" }}>request submitted.</p>
       </div>
-      <p className="text-xs font-mono mb-5 ml-4" style={{ color: "#8A8480" }}>{email}</p>
+      <p style={{ fontSize: 11, fontFamily: "monospace", color: "#4A4540", marginBottom: 18, marginLeft: 15 }}>{email}</p>
       {unreadCount > 0 && (
-        <div className="px-3 py-2 mb-4 text-xs font-mono" style={{
-          background: "rgba(232,115,74,0.1)", border: "1px solid rgba(232,115,74,0.3)", borderRadius: 8, color: "#E8734A",
-        }}>
+        <div style={{ padding: "10px 14px", marginBottom: 16, fontSize: 12, fontFamily: "monospace", background: "rgba(232,115,74,0.08)", border: "1px solid rgba(232,115,74,0.25)", borderRadius: 8, color: "#E8734A" }}>
           {unreadCount} message{unreadCount > 1 ? "s" : ""} from the team
         </div>
       )}
-      <Link to="/waiting">
-        <Button className="w-full" variant="ghost">view your thread &rarr;</Button>
-      </Link>
-      <button onClick={onClear} className="text-xs font-mono mt-3 block w-full text-center" style={{ color: "#4A4A4A" }}>
-        not you?
-      </button>
+      <Link to="/waiting"><Button className="w-full" variant="ghost">view your thread →</Button></Link>
+      <button onClick={onClear} style={{ display: "block", width: "100%", textAlign: "center", marginTop: 12, fontSize: 11, fontFamily: "monospace", color: "#3A3530", background: "none", border: "none", cursor: "pointer" }}>not you?</button>
     </div>
   );
 };
@@ -436,88 +866,35 @@ const YoloPanel = () => {
   };
 
   if (step === "no") return (
-    <div className="py-8 text-center">
-      <p className="text-lg font-medium mb-2" style={{ color: "#F5F0EB" }}>fair enough.</p>
-      <p className="text-sm" style={{ color: "#8A8480" }}>maybe another time.</p>
+    <div style={{ textAlign: "center", padding: "24px 0" }}>
+      <p style={{ fontSize: 18, fontWeight: 500, color: "#F0EBE3", marginBottom: 8 }}>fair enough.</p>
+      <p style={{ fontSize: 13, color: "#5A5550" }}>maybe another time.</p>
     </div>
   );
 
   if (step === "yes") return (
     <div>
-      <h2 className="text-xl font-medium mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>cool. quick details.</h2>
-      <p className="text-xs font-mono mb-5" style={{ color: "#8A8480" }}>you'll be in immediately.</p>
-      <div className="space-y-3">
-        <PanelInput value={name} onChange={setName} placeholder="name" />
-        <PanelInput value={email} onChange={setEmail} placeholder="email" type="email" />
-        <textarea
-          value={building}
-          onChange={(e) => setBuilding(e.target.value)}
-          placeholder="what are you building?"
-          rows={3}
-          className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none"
-          style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F0EB", borderRadius: 10 }}
-        />
-        <Button
-          onClick={yolo}
-          disabled={busy}
-          className="w-full"
-          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10 }}
-        >
-          {busy ? "letting you in…" : "let me in"}
-        </Button>
+      <p style={{ fontSize: 18, fontWeight: 500, color: "#F0EBE3", marginBottom: 4, letterSpacing: "-0.02em" }}>cool. quick details.</p>
+      <p style={{ fontSize: 12, fontFamily: "monospace", color: "#4A4540", marginBottom: 20 }}>you'll be in immediately.</p>
+      <div className="bh-form-space">
+        <input className="bh-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="name" />
+        <input className="bh-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email" type="email" />
+        <textarea className="bh-input bh-textarea" value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="what are you building?" rows={3} />
+        <button className="bh-submit" onClick={yolo} disabled={busy}>{busy ? "letting you in…" : "let me in →"}</button>
       </div>
     </div>
   );
 
   return (
-    <div className="py-6">
-      <h2 className="text-2xl font-medium mb-2 text-center" style={{ color: "#F5F0EB", letterSpacing: "-0.03em" }}>are you a cool person?</h2>
-      <p className="text-xs font-mono text-center mb-6" style={{ color: "#8A8480" }}>honest answer only</p>
-      <div className="flex gap-3">
-        <button
-          onClick={() => setStep("yes")}
-          className="flex-1 py-3 text-sm font-medium transition-transform hover:scale-[1.02] active:scale-95"
-          style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10 }}
-        >
-          yes
-        </button>
-        <button
-          onClick={() => setStep("no")}
-          className="flex-1 py-3 text-sm font-medium transition-opacity hover:opacity-70"
-          style={{ background: "rgba(255,255,255,0.05)", color: "#8A8480", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)" }}
-        >
-          no
-        </button>
+    <div style={{ padding: "8px 0" }}>
+      <p style={{ fontSize: 22, fontWeight: 500, color: "#F0EBE3", letterSpacing: "-0.03em", textAlign: "center", marginBottom: 6 }}>are you a cool person?</p>
+      <p style={{ fontSize: 11, fontFamily: "monospace", color: "#4A4540", textAlign: "center", marginBottom: 24 }}>honest answer only</p>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="bh-submit" style={{ flex: 1 }} onClick={() => setStep("yes")}>yes</button>
+        <button onClick={() => setStep("no")} style={{ flex: 1, padding: "13px", fontSize: 13, fontWeight: 500, fontFamily: "monospace", color: "#5A5550", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, cursor: "pointer" }}>no</button>
       </div>
     </div>
   );
 };
-
-const StageOption = ({ active, onClick, label }: any) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="text-left p-2.5 text-xs transition-all hover:opacity-90"
-    style={{
-      background: active ? "rgba(232,115,74,0.1)" : "rgba(0,0,0,0.35)",
-      border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
-      color: active ? "#E8734A" : "#8A8480",
-      borderRadius: 8,
-    }}
-  >
-    {label}
-  </button>
-);
-
-const PanelInput = ({ value, onChange, placeholder, type = "text" }: any) => (
-  <input
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    placeholder={placeholder}
-    type={type}
-    className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
-    style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F0EB", borderRadius: 10 }}
-  />
-);
 
 export default Index;
