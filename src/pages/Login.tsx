@@ -1,161 +1,69 @@
-import { useEffect, useState } from "react";
-import { AppLayout } from "@/components/AppLayout";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { Navigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { AvatarBlock } from "@/components/AvatarBlock";
-import { Plus, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
-interface LinkRow { id?: string; label: string; url: string; }
-
-const ProfileEdit = () => {
-  const { user, profile, refreshProfile, signOut } = useAuth();
-  const nav = useNavigate();
-  const [displayName, setDisplayName] = useState("");
-  const [bio, setBio] = useState("");
-  const [whatBuilding, setWhatBuilding] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [links, setLinks] = useState<LinkRow[]>([]);
+const Login = () => {
+  const { user, profile, signIn, loading } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState("");
-  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    document.title = "edit profile — builders house";
-    if (profile) {
-      setDisplayName(profile.display_name);
-      setBio(profile.bio ?? "");
-      setWhatBuilding(profile.what_building ?? "");
-      setAvatarUrl(profile.avatar_url);
-    }
-    if (user) {
-      supabase.from("profile_links").select("*").eq("profile_id", user.id).order("sort_order").then(({ data }) => {
-        setLinks((data ?? []).map((l) => ({ id: l.id, label: l.label, url: l.url })));
-      });
-    }
-  }, [user, profile]);
+    try {
+      const err = sessionStorage.getItem("auth_error");
+      if (err) {
+        toast.error(err);
+        sessionStorage.removeItem("auth_error");
+      }
+    } catch (_) { /* ignore */ }
+  }, []);
 
-  const onAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-    if (error) { toast.error(error.message); return; }
-    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    setAvatarUrl(data.publicUrl);
-    toast.success("avatar uploaded");
-  };
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
+  if (!loading && user && !profile) return <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#8A8480" }}>loading…</div>;
+  if (user && profile?.is_approved) return <Navigate to="/home" replace />;
+  if (user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
-  const save = async () => {
-    if (!user) return;
+  const submit = async () => {
     setBusy(true);
-    const { error } = await supabase.from("profiles").update({
-      display_name: displayName.trim() || "member",
-      bio: bio.trim() || null,
-      what_building: whatBuilding.trim() || null,
-      avatar_url: avatarUrl,
-    }).eq("id", user.id);
-    if (error) { toast.error(error.message); setBusy(false); return; }
-    await supabase.from("profile_links").delete().eq("profile_id", user.id);
-    const valid = links.filter((l) => l.label.trim() && l.url.trim());
-    if (valid.length) {
-      await supabase.from("profile_links").insert(valid.map((l, i) => ({
-        profile_id: user.id, label: l.label.trim(), url: l.url.trim(), sort_order: i,
-      })));
-    }
-    await refreshProfile();
+    const { error } = await signIn(email.trim().toLowerCase(), password);
     setBusy(false);
-    toast.success("saved");
-    nav(`/profile/${user.id}`);
-  };
-
-  const deleteAccount = async () => {
-    if (deleteConfirm !== "delete my account") {
-      toast.error('type "delete my account" to confirm');
-      return;
-    }
-    if (!user) return;
-    setDeleting(true);
-    const { error } = await supabase.rpc("delete_my_account");
-    if (error) { toast.error(error.message); setDeleting(false); return; }
-    await signOut();
-    nav("/");
+    if (error) { toast.error(error); return; }
   };
 
   return (
-    <AppLayout>
-      <div className="max-w-2xl mx-auto p-6 md:p-10">
-        <h1 className="text-2xl font-medium mb-8">edit profile</h1>
-        <div className="bento-card space-y-5">
-          <div className="flex items-center gap-4">
-            <AvatarBlock url={avatarUrl} name={displayName || "?"} size={64} />
-            <label className="cursor-pointer">
-              <input type="file" accept="image/*" onChange={onAvatarUpload} className="hidden" />
-              <span className="text-xs font-mono px-3 py-2 rounded-lg hairline hover:bg-surface-elevated">upload avatar</span>
-            </label>
-          </div>
-          <Field label="display name">
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={inputCx} />
-          </Field>
-          <Field label="bio">
-            <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={2} className={`${inputCx} resize-none`} />
-          </Field>
-          <Field label="what i'm building">
-            <textarea value={whatBuilding} onChange={(e) => setWhatBuilding(e.target.value)} rows={4} className={`${inputCx} resize-none`} />
-          </Field>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#0D0D0D" }}>
+      <div className="w-full max-w-md rounded-2xl p-8" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <h1 className="text-3xl font-medium mb-8" style={{ color: "#F5F0EB" }}>builders house.</h1>
+        <div className="space-y-4">
           <div>
-            <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">links</p>
-            <div className="space-y-2">
-              {links.map((l, i) => (
-                <div key={i} className="flex gap-2">
-                  <input placeholder="label" value={l.label}
-                    onChange={(e) => setLinks((arr) => arr.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
-                    className={`${inputCx} w-32`} />
-                  <input placeholder="https://" value={l.url}
-                    onChange={(e) => setLinks((arr) => arr.map((x, j) => j === i ? { ...x, url: e.target.value } : x))}
-                    className={`${inputCx} flex-1 font-mono text-xs`} />
-                  <button onClick={() => setLinks((arr) => arr.filter((_, j) => j !== i))} className="px-2 text-muted-foreground hover:text-destructive">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-              <button onClick={() => setLinks((arr) => [...arr, { label: "", url: "" }])} className="text-xs font-mono text-muted-foreground hover:text-foreground flex items-center gap-1">
-                <Plus className="h-3 w-3" /> add link
-              </button>
-            </div>
+            <label className="text-[10px] font-mono uppercase tracking-wider block mb-1.5" style={{ color: "#8A8480" }}>email address</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" type="email"
+              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
           </div>
-          <Button onClick={save} disabled={busy} className="w-full">{busy ? "saving…" : "save"}</Button>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#8A8480" }}>password</label>
+              <Link to="/forgot-password" className="text-[10px] font-mono hover:text-primary" style={{ color: "#8A8480" }}>forgot password?</Link>
+            </div>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password"
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
+          </div>
+          <Button className="w-full mt-3" onClick={submit} disabled={busy}>
+            {busy ? "…" : "log in →"}
+          </Button>
         </div>
-
-        <div className="mt-8 rounded-xl p-5" style={{ border: "1px solid rgba(232,116,116,0.2)", background: "rgba(232,116,116,0.04)" }}>
-          <h2 className="text-sm font-medium mb-1" style={{ color: "#E87474" }}>danger zone</h2>
-          <p className="text-xs mb-4" style={{ color: "#8A8480" }}>
-            this permanently deletes your profile, posts, and all your data from builders house. it cannot be undone.
-          </p>
-          <input value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)}
-            placeholder='type "delete my account" to confirm'
-            className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none mb-3"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(232,116,116,0.3)", color: "#F5F0EB" }} />
-          <button onClick={deleteAccount} disabled={deleting || deleteConfirm !== "delete my account"}
-            className="w-full py-2.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40"
-            style={{ background: "rgba(232,116,116,0.15)", color: "#E87474", border: "1px solid rgba(232,116,116,0.3)" }}>
-            {deleting ? "deleting…" : "delete my account"}
-          </button>
+        <div className="mt-7 space-y-2 text-sm" style={{ color: "#8A8480" }}>
+          <p>don't have access? <Link to="/" className="underline hover:text-primary">request it.</Link></p>
+          <p>waiting on approval? <Link to="/waiting" className="underline hover:text-primary">check your status.</Link></p>
         </div>
       </div>
-    </AppLayout>
+    </div>
   );
 };
 
-const inputCx = "bg-background hairline rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary w-full";
-const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div>
-    <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground block mb-1.5">{label}</label>
-    {children}
-  </div>
-);
-
-export default ProfileEdit;
+export default Login;
