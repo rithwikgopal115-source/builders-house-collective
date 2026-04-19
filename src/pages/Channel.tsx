@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FloatingActions } from "@/components/FloatingActions";
 import { toast } from "sonner";
-import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, Send, ArrowLeft } from "lucide-react";
+import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, Send, ArrowLeft, Trash2 } from "lucide-react";
 
 interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; }
 
@@ -22,7 +22,7 @@ const ICONS: Record<string, { icon: any; color: string }> = {
 
 const ChannelPage = () => {
   const { slug } = useParams();
-  const { user, profile, isAdmin, loading, profileLoading } = useAuth();
+  const { user, profile, isAdmin, loading } = useAuth();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -72,14 +72,21 @@ const ChannelPage = () => {
     toast.success("request sent to author");
   };
 
-  if (loading || profileLoading) return <AppLayout><div className="p-10 text-muted-foreground font-mono text-sm">loading…</div></AppLayout>;
+  const deletePost = async (postId: string) => {
+    if (!confirm("delete this post?")) return;
+    const { error } = await supabase.from("posts").delete().eq("id", postId);
+    if (error) { toast.error(error.message); return; }
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    toast.success("post deleted");
+  };
+
+  if (loading) return <AppLayout><div className="p-10 text-muted-foreground font-mono text-sm">loading…</div></AppLayout>;
   if (notFound) return <Navigate to="/home" replace />;
   if (!channel) return <div className="min-h-screen p-10 text-muted-foreground font-mono text-sm">loading…</div>;
 
   const iconCfg = ICONS[channel.slug] ?? { icon: Star, color: "#E8734A" };
   const Icon = iconCfg.icon;
 
-  // Public visitor on a public-visible channel
   if (!user || !isApproved) {
     if (!channel.is_public_visible) return <Navigate to="/" replace />;
     const publicPosts = posts.filter((p) => p.visibility === "public");
@@ -87,7 +94,7 @@ const ChannelPage = () => {
       <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
         <nav style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="max-w-4xl mx-auto px-6 md:px-10 py-5 flex items-center justify-between">
-            <Link to={user ? "/home" : "/"} className="text-sm font-medium tracking-tight" style={{ color: "#F5F0EB" }}>← builders house</Link>
+            <Link to={user ? "/home" : "/"} className="text-sm font-medium tracking-tight" style={{ color: "#F5F0EB" }}>&#8592; builders house</Link>
             <Link to="/login" className="text-xs font-mono uppercase tracking-wider hover:text-primary" style={{ color: "#8A8480" }}>login</Link>
           </div>
         </nav>
@@ -142,7 +149,6 @@ const ChannelPage = () => {
           </div>
         </header>
 
-        {/* Two columns on desktop: feed left ~60%, chat right ~40%. Single column on mobile. */}
         <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
           <div>
             <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
@@ -158,17 +164,28 @@ const ChannelPage = () => {
                   </div>
                 )}
                 {visible.map((p) => (
-                  <PostCard
-                    key={p.id}
-                    post={p}
-                    onAdminRequestPublic={isAdmin ? requestPublic : undefined}
-                  />
+                  <div key={p.id} className="relative group">
+                    <PostCard
+                      post={p}
+                      onAdminRequestPublic={isAdmin ? requestPublic : undefined}
+                    />
+                    {(p.user_id === user?.id || isAdmin) && (
+                      <button
+                        onClick={() => deletePost(p.id)}
+                        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md"
+                        style={{ background: "rgba(232,115,74,0.15)", color: "#E87474" }}
+                        title="delete post"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </TabsContent>
             </Tabs>
           </div>
 
-          <ChannelChat channelId={channel.id} channelName={channel.name} />
+          <ChannelChat channelId={channel.id} channelName={channel.name} userId={user?.id} isAdmin={isAdmin} />
         </div>
       </div>
 
@@ -181,20 +198,13 @@ const ChannelPage = () => {
   );
 };
 
-/**
- * Lightweight group chat panel — uses comments table with a special post_id
- * sentinel pattern would be nicer, but for now we just render a placeholder
- * stream backed by the channel's most-recent quick replies. Realtime-ready
- * skeleton; can be upgraded to a dedicated chat_messages table later.
- */
-const ChannelChat = ({ channelId, channelName }: { channelId: string; channelName: string }) => {
-  const { user, profile } = useAuth();
+const ChannelChat = ({ channelId, channelName, userId, isAdmin }: { channelId: string; channelName: string; userId?: string; isAdmin: boolean }) => {
+  const { profile } = useAuth();
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    // Fetch latest 30 short text posts in this channel as a chat-style stream
     const { data } = await supabase
       .from("posts")
       .select("id, content, created_at, user_id, profiles!posts_user_id_fkey(display_name, avatar_url)")
@@ -211,7 +221,7 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
   useEffect(() => {
     const ch = supabase
       .channel(`chat:${channelId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts", filter: `channel_id=eq.${channelId}` }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts", filter: `channel_id=eq.${channelId}` }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [channelId, load]);
@@ -219,18 +229,25 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const send = async () => {
-    if (!draft.trim() || !user || !profile?.is_approved) return;
+    if (!draft.trim() || !userId || !profile?.is_approved) return;
     const text = draft.trim();
     setDraft("");
     const { error } = await supabase.from("posts").insert({
       channel_id: channelId,
-      user_id: user.id,
+      user_id: userId,
       content: text,
       type: "text",
       visibility: "community",
       is_resource: false,
     });
     if (error) toast.error(error.message);
+  };
+
+  const deleteMsg = async (msgId: string, msgUserId: string) => {
+    if (msgUserId !== userId && !isAdmin) return;
+    const { error } = await supabase.from("posts").delete().eq("id", msgId);
+    if (error) { toast.error(error.message); return; }
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
   };
 
   return (
@@ -248,10 +265,11 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
           <p className="text-xs font-mono text-center py-8" style={{ color: "#8A8480" }}>no messages yet — say hi.</p>
         )}
         {messages.map((m) => {
-          const mine = m.user_id === user?.id;
+          const mine = m.user_id === userId;
+          const canDelete = mine || isAdmin;
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className="max-w-[80%]">
+            <div key={m.id} className={`flex group ${mine ? "justify-end" : "justify-start"}`}>
+              <div className="max-w-[80%] relative">
                 {!mine && (
                   <div className="text-[10px] font-mono uppercase tracking-wider mb-0.5" style={{ color: "#8A8480" }}>
                     {m.profiles?.display_name ?? "member"}
@@ -267,6 +285,16 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
                 >
                   {m.content}
                 </div>
+                {canDelete && (
+                  <button
+                    onClick={() => deleteMsg(m.id, m.user_id)}
+                    className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 flex items-center justify-center rounded-full"
+                    style={{ background: "#2A2A2A", color: "#E87474" }}
+                    title="delete"
+                  >
+                    <Trash2 className="h-2.5 w-2.5" />
+                  </button>
+                )}
               </div>
             </div>
           );
