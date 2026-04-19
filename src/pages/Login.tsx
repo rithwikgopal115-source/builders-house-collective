@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const Login = () => {
-  const { user, profile, signIn, loading, profileLoading } = useAuth();
+  const { user, profile, signIn, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -13,30 +13,20 @@ const Login = () => {
   useEffect(() => {
     try {
       const err = sessionStorage.getItem("auth_error");
-      if (err) {
-        toast.error(err);
-        sessionStorage.removeItem("auth_error");
-      }
-    } catch (_) { /* ignore */ }
+      if (err) { toast.error(err); sessionStorage.removeItem("auth_error"); }
+    } catch (_) {}
   }, []);
 
-  if (loading || profileLoading) return (
-    <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm" style={{ background: "#0D0D0D" }}>
-      loading…
-    </div>
-  );
-  if (user && profile?.is_approved) return <Navigate to="/home" replace />;
-  if (user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
-  if (user && !profile) return <Navigate to="/waiting" replace />;
-
+if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground font-mono text-sm">loading…</div>;
+if (!loading && user && !profile) return <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#8A8480" }}>loading…</div>;
+if (user && profile?.is_approved) return <Navigate to="/home" replace />;
+if (user && profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
   const submit = async () => {
     setBusy(true);
     const { error } = await signIn(email.trim().toLowerCase(), password);
     setBusy(false);
     if (error) { toast.error(error); return; }
-    // Do NOT navigate manually — the Navigate guards above handle redirect
-    // once onAuthStateChange fires and profile loads.
   };
 
   return (
@@ -51,7 +41,10 @@ const Login = () => {
               style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB" }} />
           </div>
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider block mb-1.5" style={{ color: "#8A8480" }}>password</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#8A8480" }}>password</label>
+              <Link to="/forgot-password" className="text-[10px] font-mono hover:text-primary" style={{ color: "#8A8480" }}>forgot password?</Link>
+            </div>
             <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password"
               onKeyDown={(e) => e.key === "Enter" && submit()}
               className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1"
