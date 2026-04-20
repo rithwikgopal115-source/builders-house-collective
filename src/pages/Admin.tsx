@@ -116,7 +116,7 @@ const Admin = () => {
               </span>
               <Switch checked={yoloMode} onCheckedChange={toggleYolo} />
             </div>
-            <p className="text-[11px] font-mono" style={{ color: "#8A8480" }}>
+            <p className="text-[11px] font-mono" style={{ color: "#A09890" }}>
               {yoloMode
                 ? "open doors — anyone who says they're cool gets in instantly."
                 : "standard flow — you review every request manually."}
@@ -140,7 +140,7 @@ const Admin = () => {
                   className="font-mono transition-colors"
                   style={{
                     background: filter === f ? "#E8734A" : "#1E1E1E",
-                    color: filter === f ? "#0D0D0D" : "#8A8480",
+                    color: filter === f ? "#0D0D0D" : "#A09890",
                     border: filter === f ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
                     borderRadius: 999,
                     padding: "4px 12px",
@@ -153,7 +153,7 @@ const Admin = () => {
             </div>
 
             {filtered.length === 0 && (
-              <p className="text-sm font-mono" style={{ color: "#8A8480" }}>no requests in this filter</p>
+              <p className="text-sm font-mono" style={{ color: "#A09890" }}>no requests in this filter</p>
             )}
 
             {/* Table-style rows */}
@@ -167,13 +167,13 @@ const Admin = () => {
                   <div className="flex-1 min-w-[200px]">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="font-medium" style={{ color: "#F5F0EB" }}>{r.name}</span>
-                      <span className="text-xs font-mono" style={{ color: "#8A8480" }}>{r.email}</span>
+                      <span className="text-xs font-mono" style={{ color: "#A09890" }}>{r.email}</span>
                       {r.onboard_path === "yolo" && (
                         <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#2A1A0E", color: "#E8734A", borderRadius: 999 }}>yolo</span>
                       )}
                     </div>
                     <p className="text-sm mb-2" style={{ color: "#F5F0EB" }}>{r.what_building}</p>
-                    <div className="flex items-center gap-2 text-xs font-mono" style={{ color: "#8A8480" }}>
+                    <div className="flex items-center gap-2 text-xs font-mono" style={{ color: "#A09890" }}>
                       {r.room_selected && <span>{r.room_selected}</span>}
                       <span>· {new Date(r.created_at).toLocaleDateString()}</span>
                       <span>· {r.status}</span>
@@ -181,7 +181,7 @@ const Admin = () => {
                   </div>
                   {r.status === "pending" && (
                     r.email === user?.email ? (
-                      <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#1E1E1E", color: "#8A8480", borderRadius: 999 }}>your own request</span>
+                      <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#1E1E1E", color: "#A09890", borderRadius: 999 }}>your own request</span>
                     ) : (
                       <div className="flex gap-1.5 flex-wrap">
                         <PillBtn variant="ghost" icon={MessageSquare} onClick={() => setDmRequest(r)}>dm first</PillBtn>
@@ -210,7 +210,7 @@ const Admin = () => {
                       <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#2A1A0E", color: "#E8734A", borderRadius: 999 }}>builder</span>
                       {m.is_admin && <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#1E1E1E", color: "#C9B99A", borderRadius: 999 }}>admin</span>}
                     </div>
-                    <span className="text-xs font-mono" style={{ color: "#8A8480" }}>joined {new Date(m.created_at).toLocaleDateString()}</span>
+                    <span className="text-xs font-mono" style={{ color: "#A09890" }}>joined {new Date(m.created_at).toLocaleDateString()}</span>
                   </div>
                   {m.id !== user?.id && (
                     <PillBtn variant="ghost" onClick={() => removeMember(m.id)}>remove</PillBtn>
@@ -230,13 +230,13 @@ const Admin = () => {
         <Dialog open={!!credentialModal} onOpenChange={(o) => !o && setCredentialModal(null)}>
           <DialogContent style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
             <DialogHeader><DialogTitle className="font-medium" style={{ color: "#F5F0EB" }}>approved</DialogTitle></DialogHeader>
-            <p className="text-sm mb-4" style={{ color: "#8A8480" }}>share these credentials with the new builder. they should change their password.</p>
+            <p className="text-sm mb-4" style={{ color: "#A09890" }}>share these credentials with the new builder. they should change their password.</p>
             <div className="space-y-2 font-mono text-xs">
               <div className="p-3 break-all" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, color: "#F5F0EB" }}>
-                <span style={{ color: "#8A8480" }}>email · </span>{credentialModal?.email}
+                <span style={{ color: "#A09890" }}>email · </span>{credentialModal?.email}
               </div>
               <div className="p-3 break-all" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, color: "#F5F0EB" }}>
-                <span style={{ color: "#8A8480" }}>password · </span>{credentialModal?.password}
+                <span style={{ color: "#A09890" }}>password · </span>{credentialModal?.password}
               </div>
             </div>
             <Button onClick={() => { navigator.clipboard.writeText(`${credentialModal?.email} / ${credentialModal?.password}`); toast.success("copied"); }} className="mt-3">copy</Button>
@@ -283,16 +283,16 @@ const DmThread = ({ request, onClose, onApprove, onReject }: any) => {
           </DialogTitle>
         </DialogHeader>
         <div className="p-3 mb-3" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8 }}>
-          <p className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#8A8480" }}>building</p>
+          <p className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#A09890" }}>building</p>
           <p className="text-sm" style={{ color: "#F5F0EB" }}>{request?.what_building}</p>
         </div>
         <div className="max-h-[320px] overflow-y-auto space-y-3 p-1">
-          {messages.length === 0 && <p className="text-xs font-mono text-center py-8" style={{ color: "#8A8480" }}>no messages yet — say hi.</p>}
+          {messages.length === 0 && <p className="text-xs font-mono text-center py-8" style={{ color: "#A09890" }}>no messages yet — say hi.</p>}
           {messages.map((m) => (
             <div key={m.id} className={`flex ${m.sender_type === "admin" ? "justify-end" : "justify-start"}`}>
               <div className="max-w-[75%]">
                 {m.sender_type === "requester" && (
-                  <div className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#8A8480" }}>{request?.name}</div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#A09890" }}>{request?.name}</div>
                 )}
                 <div className="px-3 py-2 text-sm" style={{
                   background: m.sender_type === "admin" ? "#E8734A" : "#1E1E1E",
@@ -357,23 +357,23 @@ const ChannelAdminRow = ({ channel }: { channel: any }) => {
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>{channel.name.toLowerCase()}</h3>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: isPublic ? "#1B9A6A" : "#8A8480" }}>
+          <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: isPublic ? "#1B9A6A" : "#A09890" }}>
             {isPublic ? "public" : "members only"}
           </span>
           <Switch checked={isPublic} onCheckedChange={togglePublic} />
-          <span className="text-xs font-mono" style={{ color: "#8A8480" }}>{count} posts</span>
+          <span className="text-xs font-mono" style={{ color: "#A09890" }}>{count} posts</span>
         </div>
       </div>
       <div className="space-y-2">
         {recent.map((p) => (
           <div key={p.id} className="flex items-center gap-2 text-sm">
             <span className="flex-1 truncate" style={{ color: "#F5F0EB" }}>{p.title || p.content?.slice(0, 60)}</span>
-            <span className="text-[10px] font-mono uppercase" style={{ color: "#8A8480" }}>{p.visibility}</span>
+            <span className="text-[10px] font-mono uppercase" style={{ color: "#A09890" }}>{p.visibility}</span>
             <PillBtn variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>{p.is_pinned ? "unpin" : "pin"}</PillBtn>
             <PillBtn variant="ghost" onClick={() => remove(p.id)}>×</PillBtn>
           </div>
         ))}
-        {recent.length === 0 && <p className="text-xs font-mono" style={{ color: "#8A8480" }}>no posts</p>}
+        {recent.length === 0 && <p className="text-xs font-mono" style={{ color: "#A09890" }}>no posts</p>}
       </div>
     </div>
   );
