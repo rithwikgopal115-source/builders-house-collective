@@ -20,33 +20,12 @@ const rng32 = (seed: number) => {
 };
 const STARS = (() => {
   const r = rng32(42);
-  return Array.from({ length: 200 }, () => ({
+  return Array.from({ length: 60 }, () => ({
     x: r() * 100, y: r() * 62,
-    sz: r() * 1.8 + 0.4, o: r() * 0.55 + 0.25,
-    twinkle: r() > 0.65, delay: r() * 6, dur: r() * 3 + 2,
+    sz: r() * 1.6 + 0.4, o: r() * 0.45 + 0.2,
+    twinkle: r() > 0.9, delay: r() * 6, dur: r() * 3 + 2,
   }));
 })();
-
-const EMOJIS = [
-  { e: "🌙", x: 88, y: 4,  s: 44, o: 0.55, delay: 0   },
-  { e: "✨", x: 12, y: 10, s: 20, o: 0.40, delay: 1.2 },
-  { e: "⭐", x: 65, y: 3,  s: 24, o: 0.30, delay: 2.1 },
-  { e: "🌲", x: 94, y: 78, s: 56, o: 0.32, delay: 1.5 },
-  { e: "🌲", x: 1,  y: 82, s: 64, o: 0.28, delay: 0.3 },
-  { e: "🌲", x: 18, y: 85, s: 48, o: 0.22, delay: 1.1 },
-  { e: "🌳", x: 48, y: 87, s: 44, o: 0.20, delay: 2.5 },
-  { e: "🌳", x: 74, y: 84, s: 38, o: 0.18, delay: 0.9 },
-  { e: "🏔️", x: 52, y: 80, s: 40, o: 0.22, delay: 1.0 },
-  { e: "🏔️", x: 33, y: 78, s: 32, o: 0.16, delay: 2.2 },
-  { e: "🌊", x: 42, y: 91, s: 30, o: 0.25, delay: 2.3 },
-  { e: "🚀", x: 78, y: 26, s: 18, o: 0.18, delay: 0.6 },
-  { e: "💡", x: 28, y: 7,  s: 14, o: 0.18, delay: 1.8 },
-  { e: "🔥", x: 55, y: 20, s: 16, o: 0.18, delay: 3.0 },
-  { e: "🌿", x: 6,  y: 72, s: 34, o: 0.35, delay: 0.8 },
-  { e: "🌿", x: 72, y: 86, s: 28, o: 0.22, delay: 1.4 },
-  { e: "✨", x: 36, y: 36, s: 12, o: 0.15, delay: 4.0 },
-  { e: "⭐", x: 96, y: 40, s: 16, o: 0.20, delay: 2.8 },
-];
 
 /* ── Tile config — mirrors Home.tsx exactly ─────────────────────────────── */
 const TILES: Record<string, { bg: string; fg: string; icon: any; label: string }> = {
@@ -172,13 +151,6 @@ const Index = () => {
             animationDelay: `${s.delay}s`, animationDuration: `${s.dur}s`,
           }} />
         ))}
-        {EMOJIS.map((em, i) => (
-          <span key={i} className="bh-emoji" style={{
-            left: `${em.x}%`, top: `${em.y}%`,
-            fontSize: em.s, opacity: em.o,
-            animationDelay: `${em.delay}s`,
-          }}>{em.e}</span>
-        ))}
         <svg className="bh-mtn" viewBox="0 0 1440 520" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
           <path d="M0,520 L0,300 L80,240 L160,270 L260,180 L360,210 L460,140 L540,165 L640,100 L720,130 L820,80 L900,110 L1000,155 L1080,120 L1160,160 L1260,105 L1340,145 L1440,120 L1440,520 Z" fill="rgba(20,35,55,0.75)" />
           <path d="M640,100 L680,115 L720,130 L760,118 L820,80 L850,95 L900,110 L860,82 L820,78 L780,92 L720,128 L680,113 Z" fill="rgba(160,190,220,0.18)" />
@@ -191,11 +163,6 @@ const Index = () => {
         </svg>
         <div className="bh-horizon" />
         <div className="bh-lake-glow" />
-        <div className="bh-orb bh-orb-a" />
-        <div className="bh-orb bh-orb-b" />
-        <div className="bh-orb bh-orb-c" />
-        <div className="bh-orb bh-orb-d" />
-        <div className="bh-grain" />
       </div>
 
       {/* ── Nav ────────────────────────────────────────────────────── */}
