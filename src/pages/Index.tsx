@@ -124,16 +124,16 @@ const Index = () => {
     })();
   }, [pendingEmail]);
 
-  if (!loading && user && !profile)                         return <Navigate to="/waiting" replace />;
-  if (!loading && user && profile?.is_approved)             return <Navigate to="/home"    replace />;
-  if (!loading && user && profile && !profile.is_approved)  return <Navigate to="/waiting" replace />;
-
   const chRef   = useReveal();
   const heroRef = useReveal();
   const vslRef  = useReveal();
   const whyRef  = useReveal();
   const joinRef = useReveal();
   const ftRef   = useReveal();
+  
+  if (!loading && user && !profile)                         return <Navigate to="/waiting" replace />;
+  if (!loading && user && profile?.is_approved)             return <Navigate to="/home"    replace />;
+  if (!loading && user && profile && !profile.is_approved)  return <Navigate to="/waiting" replace />;
 
   return (
     <div className="bh-root">
