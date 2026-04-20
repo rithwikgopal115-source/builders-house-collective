@@ -18,7 +18,7 @@ const TILES: Record<string, { bg: string; fg: string; icon: any; label: string; 
 };
 
 const Home = () => {
-  const { profile, user, loading, profileLoading } = useAuth();
+  const { profile, user, loading } = useAuth();
   const [postsByChannel, setPostsByChannel] = useState<Record<string, FeedPost[]>>({});
   const [unreadByChannel, setUnreadByChannel] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState({ members: 0, postsThisWeek: 0 });
@@ -61,13 +61,12 @@ const Home = () => {
     load();
   }, [profile?.is_approved, user?.id]);
 
-  if (loading || profileLoading) return (
-    <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#8A8480" }}>
-      loading…
-    </div>
-  );
+  if (loading || (user && !profile)) return (
+  <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#A09890" }}>
+    loading…
+  </div>
+);
   if (!user) return <Navigate to="/login" replace />;
-  if (user && !profile) return <Navigate to="/waiting" replace />;
   if (profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
   const slugs = ["resources", "ai-news", "ideas", "vibing", "hiring", "wins"];
@@ -80,7 +79,7 @@ const Home = () => {
           <h1 className="text-xl md:text-2xl font-medium tracking-tight mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
             member dashboard
           </h1>
-          <p className="text-xs font-mono" style={{ color: "#8A8480" }}>
+          <p className="text-xs font-mono" style={{ color: "#A09890" }}>
             {stats.members} builders · {stats.postsThisWeek} posts this week
           </p>
         </header>
@@ -103,7 +102,7 @@ const Home = () => {
           <ListChecks className="h-5 w-5" style={{ color: "#E8734A" }} />
           <div className="flex-1">
             <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>community tasks</div>
-            <div className="text-xs font-mono" style={{ color: "#8A8480" }}>things people are working on</div>
+            <div className="text-xs font-mono" style={{ color: "#A09890" }}>things people are working on</div>
           </div>
         </Link>
       </div>
