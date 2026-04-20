@@ -5,6 +5,13 @@ import { Bell, LogOut, Shield } from "lucide-react";
 import { AvatarBlock } from "./AvatarBlock";
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * Global shell — single top bar holds the wordmark left and all chrome right
+ * (bell with unread dot, profile avatar, admin shield, logout).
+ *
+ * Pages with their own custom shell (landing, login, waiting) should NOT
+ * wrap themselves in <AppLayout/> — only logged-in app pages do.
+ */
 export const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, profile, isAdmin, loading, signOut } = useAuth();
   const location = useLocation();
@@ -43,6 +50,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
+      {/* Top bar — wordmark left, all chrome right */}
       <header
         className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-5 md:px-8 h-14"
         style={{ background: "#0D0D0D", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
@@ -61,7 +69,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             aria-label="notifications"
             className="relative h-9 w-9 flex items-center justify-center rounded-md transition-colors hover:bg-white/5"
           >
-            <Bell className="h-4 w-4" style={{ color: "#8A8480" }} />
+            <Bell className="h-4 w-4" style={{ color: "#A09890" }} />
             {unread > 0 && (
               <span
                 className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full"
@@ -94,7 +102,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             aria-label="log out"
             className="h-9 w-9 flex items-center justify-center rounded-md transition-colors hover:bg-white/5"
           >
-            <LogOut className="h-4 w-4" style={{ color: "#8A8480" }} />
+            <LogOut className="h-4 w-4" style={{ color: "#A09890" }} />
           </button>
         </div>
       </header>
