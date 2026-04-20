@@ -42,8 +42,8 @@ Deno.serve(async (req) => {
       });
       const { data: u } = await callerClient.auth.getUser();
       if (u?.user) {
-        const { data: r } = await admin.from("user_roles").select("id").eq("user_id", u.user.id).eq("role", "admin").maybeSingle();
-        callerIsAdmin = !!r;
+        const { data: pRow } = await admin.from("profiles").select("is_admin").eq("id", u.user.id).maybeSingle();
+        callerIsAdmin = !!pRow?.is_admin;
       }
     }
 
