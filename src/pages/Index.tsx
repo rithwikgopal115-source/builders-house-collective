@@ -854,8 +854,7 @@ const ReturningVisitorPanel = ({ email, status, unreadCount, onClear }: {
 
 /* ── YoloPanel ──────────────────────────────────────────────────────────── */
 const YoloPanel = () => {
-  const nav = useNavigate();
-  const [step, setStep]         = useState<"ask"|"yes"|"no">("ask");
+  const [step, setStep]         = useState<"ask"|"yes"|"no"|"check_email">("ask");
   const [name, setName]         = useState("");
   const [email, setEmail]       = useState("");
   const [building, setBuilding] = useState("");
@@ -869,11 +868,7 @@ const YoloPanel = () => {
     });
     setBusy(false);
     if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); return; }
-    if (data?.password) {
-      const { error: se } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: data.password });
-      if (se) { toast.error(se.message); return; }
-      toast.success("you're in."); nav("/home");
-    }
+    if (data?.ok) setStep("check_email");
   };
 
   if (step === "no") return (
@@ -883,15 +878,23 @@ const YoloPanel = () => {
     </div>
   );
 
+  if (step === "check_email") return (
+    <div style={{ textAlign: "center", padding: "20px 0" }}>
+      <p style={{ fontSize: 17, fontWeight: 500, color: "#F0EBE3", marginBottom: 8, letterSpacing: "-0.02em" }}>check your email.</p>
+      <p style={{ fontSize: 12, color: "#5A5550", marginBottom: 6 }}>we sent a link to <span style={{ color: "#A09890" }}>{email}</span></p>
+      <p style={{ fontSize: 11, fontFamily: "monospace", color: "#3A3530" }}>click it to get in. check spam if you don't see it.</p>
+    </div>
+  );
+
   if (step === "yes") return (
     <div>
       <p style={{ fontSize: 17, fontWeight: 500, color: "#F0EBE3", marginBottom: 4, letterSpacing: "-0.02em" }}>cool. quick details.</p>
-      <p style={{ fontSize: 11, fontFamily: "monospace", color: "#4A4540", marginBottom: 18 }}>you'll be in immediately.</p>
+      <p style={{ fontSize: 11, fontFamily: "monospace", color: "#4A4540", marginBottom: 18 }}>verify your email to get in.</p>
       <div className="bh-form-col">
         <input className="bh-input" value={name}     onChange={(e) => setName(e.target.value)}     placeholder="name" />
         <input className="bh-input" value={email}    onChange={(e) => setEmail(e.target.value)}    placeholder="email" type="email" />
         <textarea className="bh-input bh-ta" value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="what are you building?" rows={3} />
-        <button className="bh-sub-btn" onClick={yolo} disabled={busy}>{busy ? "letting you in…" : "let me in →"}</button>
+        <button className="bh-sub-btn" onClick={yolo} disabled={busy}>{busy ? "sending link…" : "let me in →"}</button>
       </div>
     </div>
   );
