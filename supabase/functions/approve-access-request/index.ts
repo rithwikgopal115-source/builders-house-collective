@@ -36,8 +36,8 @@ Deno.serve(async (req) => {
     const callerId = userData.user.id;
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
-    const { data: roleRow } = await admin.from("user_roles").select("id").eq("user_id", callerId).eq("role", "admin").maybeSingle();
-    if (!roleRow) return json({ error: "forbidden — admin only" }, 403);
+    const { data: profileRow } = await admin.from("profiles").select("is_admin").eq("id", callerId).maybeSingle();
+    if (!profileRow?.is_admin) return json({ error: "forbidden — admin only" }, 403);
 
     const body = await req.json();
     const { request_id, action } = body as { request_id?: string; action?: string };
