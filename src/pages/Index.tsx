@@ -873,7 +873,7 @@ const yolo = async () => {
   email: email.trim().toLowerCase(),
   what_building: building.trim(),
   cool_person_response: true,
-  onboard_path: "yolo",
+  onboard_path: "auto_yolo",
   status: "approved",
 } as any, { onConflict: "email" });
 
