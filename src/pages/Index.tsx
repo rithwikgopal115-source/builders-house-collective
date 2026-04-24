@@ -868,20 +868,20 @@ const yolo = async () => {
   setBusy(true);
 
   // Insert approved access request directly
-  const { error: reqErr } = await supabase.from("access_requests").upsert({
+  const { error: reqErr } = await supabase.from("access_requests").insert({
   name: name.trim(),
   email: email.trim().toLowerCase(),
   what_building: building.trim(),
   cool_person_response: true,
   onboard_path: "auto_yolo",
   status: "approved",
-} as any, { onConflict: "email" });
+} as any);
 
-  if (reqErr) {
-    toast.error(reqErr.message);
-    setBusy(false);
-    return;
-  }
+if (reqErr && !reqErr.message?.includes("duplicate") && !reqErr.code?.includes("23505")) {
+  toast.error(reqErr.message);
+  setBusy(false);
+  return;
+}
 
   // Send magic link — Supabase creates user + fires handle_new_user trigger
   const { error: otpErr } = await supabase.auth.signInWithOtp({
