@@ -860,31 +860,43 @@ const YoloPanel = () => {
   const [building, setBuilding] = useState("");
   const [busy, setBusy]         = useState(false);
 
-  const yolo = async () => {
-    if (!name.trim() || !email.trim() || !building.trim()) { toast.error("name, email, what you're building"); return; }
-    setBusy(true);
-    const _res = await fetch(
-  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/yolo-onboard`,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-    },
-    body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), what_building: building.trim() }),
+const yolo = async () => {
+  if (!name.trim() || !email.trim() || !building.trim()) {
+    toast.error("name, email, what you're building");
+    return;
   }
-);
-const data = await _res.json();
-const error = _res.ok ? null : { message: data?.error ?? "failed" };
-    if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); setBusy(false); return; }
-    const { error: otpErr } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false },
-    });
+  setBusy(true);
+
+  // Insert approved access request directly
+  const { error: reqErr } = await supabase.from("access_requests").upsert({
+    name: name.trim(),
+    email: email.trim().toLowerCase(),
+    what_building: building.trim(),
+    requested_tier: "learner",
+    cool_person_response: true,
+    onboard_path: "yolo",
+    status: "approved",
+  } as any, { onConflict: "email" });
+
+  if (reqErr) {
+    toast.error(reqErr.message);
     setBusy(false);
-    if (otpErr) { toast.error(otpErr.message); return; }
-    setStep("check_email");
-  };
+    return;
+  }
+
+  // Send magic link — Supabase creates user + fires handle_new_user trigger
+  const { error: otpErr } = await supabase.auth.signInWithOtp({
+    email: email.trim().toLowerCase(),
+    options: {
+      shouldCreateUser: true,
+      data: { display_name: name.trim() },
+    },
+  });
+
+  setBusy(false);
+  if (otpErr) { toast.error(otpErr.message); return; }
+  setStep("check_email");
+};
 
   if (step === "no") return (
     <div style={{ textAlign: "center", padding: "20px 0" }}>
