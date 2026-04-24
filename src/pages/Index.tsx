@@ -869,14 +869,13 @@ const yolo = async () => {
 
   // Insert approved access request directly
   const { error: reqErr } = await supabase.from("access_requests").upsert({
-    name: name.trim(),
-    email: email.trim().toLowerCase(),
-    what_building: building.trim(),
-    requested_tier: "learner",
-    cool_person_response: true,
-    onboard_path: "yolo",
-    status: "approved",
-  } as any, { onConflict: "email" });
+  name: name.trim(),
+  email: email.trim().toLowerCase(),
+  what_building: building.trim(),
+  cool_person_response: true,
+  onboard_path: "yolo",
+  status: "approved",
+} as any, { onConflict: "email" });
 
   if (reqErr) {
     toast.error(reqErr.message);
