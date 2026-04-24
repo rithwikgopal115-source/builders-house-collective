@@ -171,7 +171,10 @@ const Index = () => {
         <div className="bh-nav-r">
           {user
             ? <Link to="/home"  className="bh-nav-link">dashboard <ArrowRight className="ico-xs" /></Link>
-            : <Link to="/login" className="bh-tile-btn">login</Link>
+            : <>
+            <a href="#join" className="bh-tile-btn" style={{ background: "#F0EBE3", color: "#0A0A0A" }}>sign up</a>
+            <Link to="/login" className="bh-tile-btn">login</Link>
+          </>
           }
         </div>
       </header>
