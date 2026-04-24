@@ -866,9 +866,14 @@ const YoloPanel = () => {
     const { data, error } = await supabase.functions.invoke("yolo-onboard", {
       body: { name: name.trim(), email: email.trim().toLowerCase(), what_building: building.trim() },
     });
+    if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); setBusy(false); return; }
+    const { error: otpErr } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: false },
+    });
     setBusy(false);
-    if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "failed"); return; }
-    if (data?.ok) setStep("check_email");
+    if (otpErr) { toast.error(otpErr.message); return; }
+    setStep("check_email");
   };
 
   if (step === "no") return (
