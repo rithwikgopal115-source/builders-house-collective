@@ -1,9 +1,13 @@
 /**
- * GeneralChannelPage.tsx
- * Hub for the resources channel.
- * Navigation: Hub → Info & Skills → Info Flow → Expert's Judgement
- *                                → Skills (tile grid)
- *             Hub → Projects (tile grid) → Project detail
+ * GeneralChannelPage.tsx — Hub for the resources channel.
+ *
+ * IMPORTANT: channel_projects has NO channel_id column — it is a global table.
+ * All queries on channel_projects must NOT filter by channel_id.
+ *
+ * Navigation stack:
+ *   hub → info-skills → info-flow → expert
+ *                     → skills    → skill-detail
+ *       → project (direct click)
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,27 +30,23 @@ interface ChannelProject {
   id: string; slot_number: number; name: string; description: string | null;
   is_active: boolean; is_hidden: boolean; gradient_idx: number | null;
   project_type?: string | null; is_locked?: boolean | null;
-  intro_video_url?: string | null; parent_project_id?: string | null;
-  created_at: string;
+  intro_video_url?: string | null; created_at: string;
 }
 interface Entity {
   id: string; name: string; entity_type: string; bio?: string | null;
-  social_links?: Record<string,string> | null; tags?: string[] | null;
-  display_order?: number; created_at: string;
+  social_links?: Record<string, string> | null; tags?: string[] | null; created_at: string;
 }
 interface EntityResource {
   id: string; entity_id: string; title?: string | null;
   url: string; resource_type: string; notes?: string | null; created_at: string;
 }
 
-type ViewId = 'hub'|'info-skills'|'info-flow'|'expert'|'skills'|'projects'|'project';
-
 // ─── Constants ────────────────────────────────────────────────
 const ENTITY_TYPES = ['Company','Founder','Expert','Creator','Builder','Entrepreneur','Programmer','Researcher','Engine'];
 const RESOURCE_TYPES = ['YT Video','Google Doc','PDF','Template','GitHub Repo','PRD','Other'];
 const RESOURCE_TYPE_MAP: Record<string,string> = {
   'YT Video':'yt_video','Google Doc':'google_doc','PDF':'pdf',
-  'Template':'template','GitHub Repo':'github_repo','PRD':'prd','Other':'other'
+  'Template':'template','GitHub Repo':'github_repo','PRD':'prd','Other':'other',
 };
 const RESOURCE_TYPE_RMAP: Record<string,string> = Object.fromEntries(
   Object.entries(RESOURCE_TYPE_MAP).map(([k,v])=>[v,k])
@@ -85,11 +85,11 @@ const GRADIENTS: {base:[string,string,string];hover:[string,string,string];label
   {base:['#0f0f1a','#1a1a2e','#252545'],hover:['#151520','#22223a','#303060'],label:'Dark Matter'},
 ];
 
-const gradientCss = (c:[string,string,string],deg=135) =>
+const gradientCss = (c:[string,string,string], deg=135) =>
   `linear-gradient(${deg}deg,${c[0]} 0%,${c[1]} 50%,${c[2]} 100%)`;
 
-const getTextColor = (idx:number) => {
-  const hex = GRADIENTS[idx]?.base[1]??'#0D0D0D';
+const getTextColor = (idx: number) => {
+  const hex = GRADIENTS[idx]?.base[1] ?? '#0D0D0D';
   const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;
   const toL=(c:number)=>c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4);
   return (0.2126*toL(r)+0.7152*toL(g)+0.0722*toL(b))>0.179?'#0D0D0D':'#F5F0EB';
@@ -112,21 +112,20 @@ const GradientPicker = ({value,onChange}:{value:number;onChange:(i:number)=>void
 );
 
 // ─── LockedTile ───────────────────────────────────────────────
-const LockedTile = ({title,subtitle='coming soon'}:{title:string;subtitle?:string}) => (
+const LockedTile = ({title}:{title:string}) => (
   <div className="relative overflow-hidden flex flex-col items-center justify-center gap-3"
-    style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.06)',borderRadius:0,minHeight:160,opacity:0.7,cursor:'not-allowed'}}>
-    <Lock className="h-8 w-8" style={{color:'rgba(255,255,255,0.2)'}}/>
+    style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.06)',borderRadius:0,minHeight:130,opacity:0.65,cursor:'not-allowed'}}>
+    <Lock className="h-6 w-6" style={{color:'rgba(255,255,255,0.2)'}}/>
     <div className="text-center px-4">
-      <p className="text-sm font-bold" style={{color:'#F5F0EB'}}>{title}</p>
-      <p className="text-[10px] font-mono uppercase tracking-widest mt-1" style={{color:'#E8734A'}}>{subtitle}</p>
+      <p className="text-xs font-bold" style={{color:'#F5F0EB'}}>{title}</p>
+      <p className="text-[10px] font-mono uppercase tracking-widest mt-1" style={{color:'#E8734A'}}>coming soon</p>
     </div>
   </div>
 );
 
 // ─── HubNavTile ───────────────────────────────────────────────
 const HubNavTile = ({title,subtitle,gradIdx,onClick,icon:Icon,minHeight=180}:{
-  title:string;subtitle?:string;gradIdx:number;onClick:()=>void;
-  icon?:any;minHeight?:number;
+  title:string;subtitle?:string;gradIdx:number;onClick:()=>void;icon?:any;minHeight?:number;
 }) => {
   const [hov,setHov]=useState(false);
   const g=GRADIENTS[Math.min(gradIdx,29)];
@@ -140,16 +139,14 @@ const HubNavTile = ({title,subtitle,gradIdx,onClick,icon:Icon,minHeight=180}:{
       <div className="relative z-10 p-5 h-full flex flex-col justify-end gap-2">
         {Icon&&<Icon className="h-5 w-5 mb-1" style={{color:`${tc}99`}}/>}
         <div>
-          <div style={{display:'inline-block',border:`1px solid ${tc}`,padding:'4px 12px'}}>
+          <div style={{display:'inline-block',border:`1px solid ${tc}`,padding:'4px 14px'}}>
             <span className="text-lg font-bold" style={{color:tc,letterSpacing:'-0.02em'}}>{title}</span>
           </div>
           {subtitle&&<p className="text-[11px] mt-1.5 font-mono" style={{color:`${tc}88`}}>{subtitle}</p>}
         </div>
-        <div style={{position:'absolute',bottom:8,right:8,opacity:hov?1:0,transition:'opacity 0.3s'}}>
-          <div style={{border:`1px solid ${tc}88`,padding:'2px 8px',display:'inline-block'}}>
-            <span className="text-[10px] font-mono uppercase tracking-widest" style={{color:tc}}>enter →</span>
-          </div>
-        </div>
+        {hov&&<div style={{border:`1px solid ${tc}55`,padding:'2px 8px',display:'inline-block',position:'absolute',bottom:12,right:12}}>
+          <span className="text-[10px] font-mono uppercase tracking-widest" style={{color:tc}}>enter →</span>
+        </div>}
       </div>
     </button>
   );
@@ -179,11 +176,11 @@ const ProjectTile = ({project,isAdmin,onClick,onEdit,onHide,onDelete,style}:{
       </button>
       {isAdmin&&hov&&(
         <div className="absolute top-2 right-2 z-20 flex gap-1">
-          <button onClick={e=>{e.stopPropagation();onEdit();}} className="h-7 w-7 flex items-center justify-center rounded" style={{background:'rgba(0,0,0,0.6)',color:'#F5F0EB'}} title="edit"><Pencil className="h-3.5 w-3.5"/></button>
-          <button onClick={e=>{e.stopPropagation();onHide();}} className="h-7 w-7 flex items-center justify-center rounded" style={{background:'rgba(0,0,0,0.6)',color:'#F5F0EB'}} title={project.is_hidden?'unhide':'hide'}>
+          <button onClick={e=>{e.stopPropagation();onEdit();}} className="h-7 w-7 flex items-center justify-center rounded" style={{background:'rgba(0,0,0,0.6)',color:'#F5F0EB'}}><Pencil className="h-3.5 w-3.5"/></button>
+          <button onClick={e=>{e.stopPropagation();onHide();}} className="h-7 w-7 flex items-center justify-center rounded" style={{background:'rgba(0,0,0,0.6)',color:'#F5F0EB'}}>
             {project.is_hidden?<Eye className="h-3.5 w-3.5"/>:<EyeOff className="h-3.5 w-3.5"/>}
           </button>
-          <button onClick={e=>{e.stopPropagation();onDelete();}} className="h-7 w-7 flex items-center justify-center rounded" style={{background:'rgba(0,0,0,0.6)',color:'#ff6b6b'}} title="delete"><Trash2 className="h-3.5 w-3.5"/></button>
+          <button onClick={e=>{e.stopPropagation();onDelete();}} className="h-7 w-7 flex items-center justify-center rounded" style={{background:'rgba(0,0,0,0.6)',color:'#ff6b6b'}}><Trash2 className="h-3.5 w-3.5"/></button>
         </div>
       )}
       {project.is_hidden&&isAdmin&&(
@@ -210,9 +207,10 @@ const AddProjectTile = ({onClick,nextSlot,style}:{onClick:()=>void;nextSlot:numb
 };
 
 // ─── ProjectModal ─────────────────────────────────────────────
-const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='project',channelId}:{
+// NOTE: NO channel_id — channel_projects is a global table with no channel_id column
+const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='project'}:{
   open:boolean;onOpenChange:(o:boolean)=>void;onSaved:()=>void;
-  existing?:ChannelProject|null;nextSlot:number;defaultType?:string;channelId:string;
+  existing?:ChannelProject|null;nextSlot:number;defaultType?:string;
 }) => {
   const {user}=useAuth();
   const isEdit=!!existing;
@@ -224,8 +222,14 @@ const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='
   const [busy,setBusy]=useState(false);
 
   useEffect(()=>{
-    if(existing){setName(existing.name);setDesc(existing.description??'');setGradIdx(existing.gradient_idx??existing.slot_number-1);setProjType(existing.project_type??'project');setIsLocked(!!existing.is_locked);}
-    else{setName('');setDesc('');setGradIdx(nextSlot>0?nextSlot-1:0);setProjType(defaultType);setIsLocked(false);}
+    if(existing){
+      setName(existing.name);setDesc(existing.description??'');
+      setGradIdx(existing.gradient_idx??Math.min(existing.slot_number-1,29));
+      setProjType(existing.project_type??'project');setIsLocked(!!existing.is_locked);
+    } else {
+      setName('');setDesc('');setGradIdx(Math.min(nextSlot-1,29));
+      setProjType(defaultType);setIsLocked(false);
+    }
   },[existing,open,nextSlot,defaultType]);
 
   const save=async()=>{
@@ -233,9 +237,17 @@ const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='
     setBusy(true);
     let error;
     if(isEdit&&existing){
-      ({error}=await supabase.from('channel_projects').update({name:name.trim(),description:desc.trim()||null,gradient_idx:gradIdx,project_type:projType,is_locked:isLocked}).eq('id',existing.id));
+      ({error}=await supabase.from('channel_projects').update({
+        name:name.trim(),description:desc.trim()||null,gradient_idx:gradIdx,
+        project_type:projType,is_locked:isLocked,
+      }).eq('id',existing.id));
     } else {
-      ({error}=await supabase.from('channel_projects').insert({channel_id:channelId,slot_number:nextSlot,name:name.trim(),description:desc.trim()||null,gradient_idx:gradIdx,project_type:projType,is_locked:isLocked,is_active:true,is_hidden:false,created_by:user?.id}));
+      // No channel_id — channel_projects is global
+      ({error}=await supabase.from('channel_projects').insert({
+        slot_number:nextSlot,name:name.trim(),description:desc.trim()||null,
+        gradient_idx:gradIdx,project_type:projType,is_locked:isLocked,
+        is_active:true,is_hidden:false,created_by:user?.id,
+      }));
     }
     setBusy(false);
     if(error){toast.error(error.message);return;}
@@ -253,7 +265,7 @@ const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='
           </DialogTitle>
         </DialogHeader>
         <div className="relative overflow-hidden flex items-end p-4 mb-1" style={{background:gradientCss(prev.base),borderRadius:8,height:80}}>
-          <div style={{position:'absolute',bottom:-8,right:4,fontSize:'4rem',fontWeight:900,color:'#fff',opacity:0.08,lineHeight:1,letterSpacing:'-0.05em',userSelect:'none'}}>{isEdit?existing?.slot_number:nextSlot}</div>
+          <div style={{position:'absolute',bottom:-8,right:4,fontSize:'4rem',fontWeight:900,color:'#fff',opacity:0.08,lineHeight:1,userSelect:'none'}}>{isEdit?existing?.slot_number:nextSlot}</div>
           <div className="relative z-10" style={{border:`1px solid ${tc}`,padding:'2px 8px'}}>
             <span className="text-sm font-bold" style={{color:tc}}>{name||'Name'}</span>
           </div>
@@ -261,11 +273,11 @@ const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='
         <div className="space-y-3">
           <div>
             <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{color:'#8A8480'}}>type</p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {['project','skill'].map(t=>(
                 <button key={t} onClick={()=>setProjType(t)} className="font-mono text-xs px-3 py-1.5 rounded" style={{background:projType===t?'#E8734A':'#1E1E1E',color:projType===t?'#0D0D0D':'#A09890',border:`1px solid ${projType===t?'#E8734A':'rgba(255,255,255,0.08)'}`}}>{t}</button>
               ))}
-              <label className="flex items-center gap-1.5 text-xs font-mono ml-auto cursor-pointer" style={{color:'#A09890'}}>
+              <label className="flex items-center gap-1.5 text-xs font-mono ml-2 cursor-pointer" style={{color:'#A09890'}}>
                 <input type="checkbox" checked={isLocked} onChange={e=>setIsLocked(e.target.checked)}/> coming soon
               </label>
             </div>
@@ -332,8 +344,8 @@ const PostFeed = ({channelId,projectId}:{channelId:string;projectId:string|null|
             <PostCard post={p}/>
             {(p.user_id===user?.id||isAdmin)&&(
               <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                {p.user_id===user?.id&&<button onClick={()=>setEditingPost(p)} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10" style={{color:'#A09890'}} title="edit"><Pencil className="h-3.5 w-3.5"/></button>}
-                <button onClick={()=>deletePost(p.id)} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-red-500/20" style={{color:'#A09890'}} title="delete"><Trash2 className="h-3.5 w-3.5"/></button>
+                {p.user_id===user?.id&&<button onClick={()=>setEditingPost(p)} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10" style={{color:'#A09890'}}><Pencil className="h-3.5 w-3.5"/></button>}
+                <button onClick={()=>deletePost(p.id)} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-red-500/20" style={{color:'#A09890'}}><Trash2 className="h-3.5 w-3.5"/></button>
               </div>
             )}
           </div>
@@ -364,7 +376,7 @@ const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelPr
       </div>
       {project.intro_video_url&&(
         <div className="mb-5">
-          <button onClick={()=>setVideoCollapsed(v=>!v)} className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider mb-2 hover:text-primary" style={{color:'#A09890'}}>
+          <button onClick={()=>setVideoCollapsed(v=>!v)} className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider mb-2 hover:opacity-80" style={{color:'#A09890'}}>
             {videoCollapsed?<ChevronDown className="h-3.5 w-3.5"/>:<ChevronUp className="h-3.5 w-3.5"/>}
             {videoCollapsed?'show intro video':'hide intro video'}
           </button>
@@ -386,19 +398,19 @@ const extractYtId=(url:string)=>{
 };
 
 // ─── Expert Directory ─────────────────────────────────────────
-const SOCIAL_ICONS: Record<string,any> = {twitter:Twitter,linkedin:Linkedin,github:Github,website:Globe,youtube:Youtube};
+const SOCIAL_ICONS: Record<string,any>={twitter:Twitter,linkedin:Linkedin,github:Github,website:Globe,youtube:Youtube};
 
 const AddEntityResourceModal = ({entityId,open,onOpenChange,onSaved}:{entityId:string;open:boolean;onOpenChange:(o:boolean)=>void;onSaved:()=>void}) => {
   const {user}=useAuth();
   const [title,setTitle]=useState('');const [url,setUrl]=useState('');
-  const [rtype,setRtype]=useState('link');const [notes,setNotes]=useState('');const [busy,setBusy]=useState(false);
+  const [rtype,setRtype]=useState('YT Video');const [notes,setNotes]=useState('');const [busy,setBusy]=useState(false);
   const save=async()=>{
     if(!url.trim()){toast.error('url required');return;}
     setBusy(true);
-    const {error}=await supabase.from('entity_resources').insert({entity_id:entityId,title:title.trim()||null,url:url.trim(),resource_type:RESOURCE_TYPE_MAP[rtype]??rtype,notes:notes.trim()||null,created_by:user?.id});
+    const {error}=await supabase.from('entity_resources').insert({entity_id:entityId,title:title.trim()||null,url:url.trim(),resource_type:RESOURCE_TYPE_MAP[rtype]??'other',notes:notes.trim()||null,created_by:user?.id});
     setBusy(false);
     if(error){toast.error(error.message);return;}
-    toast.success('resource added');setTitle('');setUrl('');setNotes('');setRtype('link');onOpenChange(false);onSaved();
+    toast.success('resource added');setTitle('');setUrl('');setNotes('');setRtype('YT Video');onOpenChange(false);onSaved();
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -407,16 +419,12 @@ const AddEntityResourceModal = ({entityId,open,onOpenChange,onSaved}:{entityId:s
         <div className="space-y-3">
           <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Title (optional)" className="w-full px-3 py-2.5 text-sm focus:outline-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
           <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="URL *" className="w-full px-3 py-2.5 text-sm font-mono focus:outline-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
-          <div>
-            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{color:'#8A8480'}}>type</p>
-            <div className="flex flex-wrap gap-1.5">
-              {RESOURCE_TYPES.map(t=>(
-                <button key={t} onClick={()=>setRtype(t)} className="text-xs font-mono px-2.5 py-1 rounded-full" style={{background:rtype===t?'#E8734A':'#1E1E1E',color:rtype===t?'#0D0D0D':'#A09890',border:`1px solid ${rtype===t?'#E8734A':'rgba(255,255,255,0.08)'}`}}>{t}</button>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-1.5">
+            {RESOURCE_TYPES.map(t=>(
+              <button key={t} onClick={()=>setRtype(t)} className="text-xs font-mono px-2.5 py-1 rounded-full" style={{background:rtype===t?'#E8734A':'#1E1E1E',color:rtype===t?'#0D0D0D':'#A09890',border:`1px solid ${rtype===t?'#E8734A':'rgba(255,255,255,0.08)'}`}}>{t}</button>
+            ))}
           </div>
-          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes (optional)" rows={2}
-            className="w-full px-3 py-2.5 text-sm focus:outline-none resize-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes (optional)" rows={2} className="w-full px-3 py-2.5 text-sm focus:outline-none resize-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={()=>onOpenChange(false)} style={{color:'#A09890'}}>cancel</Button>
             <Button onClick={save} disabled={busy}>{busy?'adding…':'add resource'}</Button>
@@ -436,9 +444,10 @@ const AddEntityModal = ({open,onOpenChange,onSaved,existing}:{open:boolean;onOpe
   const [tags,setTags]=useState('');const [busy,setBusy]=useState(false);
 
   useEffect(()=>{
-    if(existing){setName(existing.name);setEtype(existing.entity_type);setBio(existing.bio??'');
-      const sl=existing.social_links??{};setTwitter(sl.twitter??'');setLinkedin(sl.linkedin??'');
-      setGithub(sl.github??'');setWebsite(sl.website??'');setYoutube(sl.youtube??'');
+    if(existing){
+      setName(existing.name);setEtype(existing.entity_type);setBio(existing.bio??'');
+      const sl=existing.social_links??{};
+      setTwitter(sl.twitter??'');setLinkedin(sl.linkedin??'');setGithub(sl.github??'');setWebsite(sl.website??'');setYoutube(sl.youtube??'');
       setTags((existing.tags??[]).join(', '));
     } else {setName('');setEtype('Builder');setBio('');setTwitter('');setLinkedin('');setGithub('');setWebsite('');setYoutube('');setTags('');}
   },[existing,open]);
@@ -459,9 +468,9 @@ const AddEntityModal = ({open,onOpenChange,onSaved,existing}:{open:boolean;onOpe
     toast.success(isEdit?'updated':'entity added');onOpenChange(false);onSaved();
   };
 
-  const SocialInput=({label,value,onChange,placeholder}:{label:string;value:string;onChange:(v:string)=>void;placeholder:string})=>(
+  const Row=({label,value,onChange,placeholder}:{label:string;value:string;onChange:(v:string)=>void;placeholder:string})=>(
     <div className="flex items-center gap-2">
-      <span className="text-xs font-mono w-16 text-right" style={{color:'#6A6460'}}>{label}</span>
+      <span className="text-xs font-mono w-16 flex-shrink-0 text-right" style={{color:'#6A6460'}}>{label}</span>
       <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="flex-1 px-3 py-2 text-xs font-mono focus:outline-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.06)',color:'#F5F0EB',borderRadius:6}}/>
     </div>
   );
@@ -480,15 +489,14 @@ const AddEntityModal = ({open,onOpenChange,onSaved,existing}:{open:boolean;onOpe
               ))}
             </div>
           </div>
-          <textarea value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio (optional)" rows={2}
-            className="w-full px-3 py-2.5 text-sm focus:outline-none resize-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
+          <textarea value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio (optional)" rows={2} className="w-full px-3 py-2.5 text-sm focus:outline-none resize-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
           <div className="space-y-2">
             <p className="text-[10px] font-mono uppercase tracking-wider" style={{color:'#8A8480'}}>social links</p>
-            <SocialInput label="twitter" value={twitter} onChange={setTwitter} placeholder="@handle or URL"/>
-            <SocialInput label="linkedin" value={linkedin} onChange={setLinkedin} placeholder="profile URL"/>
-            <SocialInput label="github" value={github} onChange={setGithub} placeholder="@username or URL"/>
-            <SocialInput label="website" value={website} onChange={setWebsite} placeholder="https://"/>
-            <SocialInput label="youtube" value={youtube} onChange={setYoutube} placeholder="channel URL"/>
+            <Row label="twitter" value={twitter} onChange={setTwitter} placeholder="@handle or URL"/>
+            <Row label="linkedin" value={linkedin} onChange={setLinkedin} placeholder="profile URL"/>
+            <Row label="github" value={github} onChange={setGithub} placeholder="@username"/>
+            <Row label="website" value={website} onChange={setWebsite} placeholder="https://"/>
+            <Row label="youtube" value={youtube} onChange={setYoutube} placeholder="channel URL"/>
           </div>
           <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Tags (comma separated)" className="w-full px-3 py-2.5 text-sm focus:outline-none" style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
           <div className="flex justify-end gap-2">
@@ -508,14 +516,13 @@ const EntityCard = ({entity,resources,isAdmin,onEdit,onDelete,onAddResource,onDe
   const [expanded,setExpanded]=useState(false);
   const sl=entity.social_links??{};
   return (
-    <div className="rounded overflow-hidden" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)'}}>
-      <div className="flex gap-0">
-        {/* Left: entity info */}
+    <div className="overflow-hidden" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8}}>
+      <div className="flex">
         <div className="flex-1 min-w-0 p-4" style={{borderRight:'1px solid rgba(255,255,255,0.06)'}}>
           <div className="flex items-start justify-between gap-2 mb-2">
             <div>
               <p className="text-sm font-bold" style={{color:'#F5F0EB'}}>{entity.name}</p>
-              <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full" style={{background:'rgba(232,115,74,0.12)',color:'#E8734A'}}>{entity.entity_type}</span>
+              <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mt-0.5" style={{background:'rgba(232,115,74,0.12)',color:'#E8734A'}}>{entity.entity_type}</span>
             </div>
             {isAdmin&&(
               <div className="flex gap-1 flex-shrink-0">
@@ -532,34 +539,29 @@ const EntityCard = ({entity,resources,isAdmin,onEdit,onDelete,onAddResource,onDe
           )}
           <div className="flex gap-2 flex-wrap">
             {Object.entries(sl).filter(([,v])=>v).map(([k,v])=>{const Icon=SOCIAL_ICONS[k]??Globe;return(
-              <a key={k} href={v.startsWith('http')?v:`https://twitter.com/${v.replace('@','')}`} target="_blank" rel="noreferrer" className="h-6 w-6 flex items-center justify-center rounded hover:bg-white/10 transition-colors" style={{color:'#A09890'}} title={k}>
+              <a key={k} href={String(v).startsWith('http')?String(v):`https://twitter.com/${String(v).replace('@','')}`} target="_blank" rel="noreferrer" className="h-6 w-6 flex items-center justify-center rounded hover:bg-white/10" style={{color:'#A09890'}} title={k}>
                 <Icon className="h-3.5 w-3.5"/>
               </a>
             );})}
           </div>
         </div>
-        {/* Right: resources */}
-        <div className="w-56 flex-shrink-0 p-3">
+        <div className="w-52 flex-shrink-0 p-3">
           <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{color:'#6A6460'}}>resources</p>
           <div className="space-y-1.5">
             {resources.slice(0,expanded?undefined:3).map(r=>(
               <div key={r.id} className="flex items-center gap-1.5 group/res">
-                <a href={r.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+                <a href={r.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 flex items-center gap-1.5 hover:opacity-80">
                   <ExternalLink className="h-3 w-3 flex-shrink-0" style={{color:'#E8734A'}}/>
                   <span className="text-xs truncate" style={{color:'#F5F0EB'}}>{r.title||r.url}</span>
                   <span className="text-[9px] font-mono flex-shrink-0" style={{color:'#6A6460'}}>{RESOURCE_TYPE_RMAP[r.resource_type]??r.resource_type}</span>
                 </a>
-                {isAdmin&&<button onClick={()=>onDeleteResource(r.id)} className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover/res:opacity-100 hover:bg-red-500/20 transition-all" style={{color:'#A09890'}}><X className="h-2.5 w-2.5"/></button>}
+                {isAdmin&&<button onClick={()=>onDeleteResource(r.id)} className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover/res:opacity-100 hover:bg-red-500/20" style={{color:'#A09890'}}><X className="h-2.5 w-2.5"/></button>}
               </div>
             ))}
-            {resources.length>3&&(
-              <button onClick={()=>setExpanded(e=>!e)} className="text-[10px] font-mono" style={{color:'#6A6460'}}>
-                {expanded?'show less':'+ '+(resources.length-3)+' more'}
-              </button>
-            )}
-            {resources.length===0&&<p className="text-[10px] font-mono" style={{color:'#4A4A4A'}}>no resources yet</p>}
+            {resources.length>3&&<button onClick={()=>setExpanded(e=>!e)} className="text-[10px] font-mono" style={{color:'#6A6460'}}>{expanded?'show less':'+ '+(resources.length-3)+' more'}</button>}
+            {!resources.length&&<p className="text-[10px] font-mono" style={{color:'#4A4A4A'}}>no resources yet</p>}
           </div>
-          {isAdmin&&<button onClick={onAddResource} className="mt-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 hover:opacity-80" style={{color:'#E8734A'}}><Plus className="h-3 w-3"/>add resource</button>}
+          {isAdmin&&<button onClick={onAddResource} className="mt-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 hover:opacity-80" style={{color:'#E8734A'}}><Plus className="h-3 w-3"/>add</button>}
         </div>
       </div>
     </div>
@@ -583,17 +585,15 @@ const ExpertDirectoryView = ({onBack}:{onBack:()=>void}) => {
     ]);
     setEntities(e??[]);setResources(r??[]);
   },[]);
-
   useEffect(()=>{load();},[load]);
 
   const deleteEntity=async(id:string)=>{
-    if(!window.confirm('delete this entity?'))return;
+    if(!window.confirm('delete entity?'))return;
     await supabase.from('entities').delete().eq('id',id);
     toast.success('deleted');load();
   };
   const deleteResource=async(id:string)=>{
-    await supabase.from('entity_resources').delete().eq('id',id);
-    load();
+    await supabase.from('entity_resources').delete().eq('id',id);load();
   };
 
   const filtered=entities.filter(e=>{
@@ -602,8 +602,8 @@ const ExpertDirectoryView = ({onBack}:{onBack:()=>void}) => {
     return true;
   });
 
-  const PillBtn=({label,active,onClick}:{label:string;active:boolean;onClick:()=>void})=>(
-    <button onClick={onClick} className="text-xs font-mono px-2.5 py-1 rounded-full transition-colors" style={{background:active?'#E8734A':'#1E1E1E',color:active?'#0D0D0D':'#A09890',border:`1px solid ${active?'#E8734A':'rgba(255,255,255,0.08)'}`}}>{label}</button>
+  const Pill=({label,active,onClick}:{label:string;active:boolean;onClick:()=>void})=>(
+    <button onClick={onClick} className="text-xs font-mono px-2.5 py-1 rounded-full" style={{background:active?'#E8734A':'#1E1E1E',color:active?'#0D0D0D':'#A09890',border:`1px solid ${active?'#E8734A':'rgba(255,255,255,0.08)'}`}}>{label}</button>
   );
 
   return (
@@ -613,20 +613,19 @@ const ExpertDirectoryView = ({onBack}:{onBack:()=>void}) => {
         <h2 className="text-lg font-bold" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>expert's judgement</h2>
         {isAdmin&&<Button onClick={()=>setAddOpen(true)} className="h-8 text-xs px-3">+ add entity</Button>}
       </div>
-      {/* Filters */}
       <div className="space-y-2 mb-5">
         <div className="flex flex-wrap gap-1.5 items-center">
-          <span className="text-[10px] font-mono uppercase tracking-wider mr-1" style={{color:'#6A6460'}}>type</span>
-          <PillBtn label="all" active={!typeFilter} onClick={()=>setTypeFilter('')}/>
-          {ENTITY_TYPES.map(t=><PillBtn key={t} label={t} active={typeFilter===t} onClick={()=>setTypeFilter(typeFilter===t?'':t)}/>)}
+          <span className="text-[10px] font-mono uppercase mr-1" style={{color:'#6A6460'}}>type</span>
+          <Pill label="all" active={!typeFilter} onClick={()=>setTypeFilter('')}/>
+          {ENTITY_TYPES.map(t=><Pill key={t} label={t} active={typeFilter===t} onClick={()=>setTypeFilter(typeFilter===t?'':t)}/>)}
         </div>
         <div className="flex flex-wrap gap-1.5 items-center">
-          <span className="text-[10px] font-mono uppercase tracking-wider mr-1" style={{color:'#6A6460'}}>content</span>
-          <PillBtn label="all" active={!rtypeFilter} onClick={()=>setRtypeFilter('')}/>
-          {RESOURCE_TYPES.map(t=><PillBtn key={t} label={t} active={rtypeFilter===t} onClick={()=>setRtypeFilter(rtypeFilter===t?'':t)}/>)}
+          <span className="text-[10px] font-mono uppercase mr-1" style={{color:'#6A6460'}}>content</span>
+          <Pill label="all" active={!rtypeFilter} onClick={()=>setRtypeFilter('')}/>
+          {RESOURCE_TYPES.map(t=><Pill key={t} label={t} active={rtypeFilter===t} onClick={()=>setRtypeFilter(rtypeFilter===t?'':t)}/>)}
         </div>
       </div>
-      {filtered.length===0&&<div className="py-16 text-center text-sm font-mono" style={{color:'#4A4A4A'}}>no entities yet{isAdmin?' — add the first one above':''}.</div>}
+      {!filtered.length&&<div className="py-16 text-center text-sm font-mono" style={{color:'#4A4A4A'}}>{isAdmin?'no entities yet — add the first one above':'no entities yet.'}</div>}
       <div className="space-y-3">
         {filtered.map(e=>(
           <EntityCard key={e.id} entity={e} resources={resources.filter(r=>r.entity_id===e.id)} isAdmin={isAdmin}
@@ -635,53 +634,47 @@ const ExpertDirectoryView = ({onBack}:{onBack:()=>void}) => {
         ))}
       </div>
       <AddEntityModal open={addOpen||!!editEntity} onOpenChange={o=>{if(!o){setAddOpen(false);setEditEntity(null);}}} onSaved={load} existing={editEntity}/>
-      {addResEntityId&&<AddEntityResourceModal entityId={addResEntityId} open={!!addResEntityId} onOpenChange={o=>{if(!o)setAddResEntityId(null);}} onSaved={load}/>}
+      {addResEntityId&&<AddEntityResourceModal entityId={addResEntityId} open={true} onOpenChange={o=>{if(!o)setAddResEntityId(null);}} onSaved={load}/>}
     </div>
   );
 };
 
 // ─── Skills View ──────────────────────────────────────────────
+// NOTE: no channel_id filter — channel_projects is global
 const SkillsView = ({channel,isAdmin,onSelectSkill,onBack}:{channel:Channel;isAdmin:boolean;onSelectSkill:(p:ChannelProject)=>void;onBack:()=>void}) => {
   const [skills,setSkills]=useState<ChannelProject[]>([]);
   const [showAdd,setShowAdd]=useState(false);
   const [editSkill,setEditSkill]=useState<ChannelProject|null>(null);
 
   const load=useCallback(async()=>{
-    const {data}=await supabase.from('channel_projects').select('*').eq('channel_id',channel.id).eq('is_active',true).eq('project_type','skill').order('slot_number');
-    setSkills(data??[]);
-  },[channel.id]);
-
+    const q=isAdmin
+      ?supabase.from('channel_projects').select('*').eq('is_active',true).eq('project_type','skill').order('slot_number')
+      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).eq('project_type','skill').order('slot_number');
+    const {data}=await q;setSkills(data??[]);
+  },[isAdmin]);
   useEffect(()=>{load();},[load]);
 
   const used=skills.map(p=>p.slot_number);
   const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
-
-  const hide=async(p:ChannelProject)=>{
-    await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);
-    toast.success(p.is_hidden?'visible':'hidden');load();
-  };
-  const del=async(p:ChannelProject)=>{
-    if(!window.confirm(`Delete "${p.name}"?`))return;
-    await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);
-    toast.success('removed');load();
-  };
+  const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
+  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
 
   return (
     <div>
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-5 hover:text-primary" style={{color:'#A09890'}}><ArrowLeft className="h-3.5 w-3.5"/>back</button>
       <h2 className="text-lg font-bold mb-4" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>skill acquisition</h2>
-      {skills.length===0&&!isAdmin&&<div className="py-12 text-center text-sm font-mono" style={{color:'#4A4A4A'}}>no skills added yet.</div>}
+      {!skills.length&&!isAdmin&&<div className="py-12 text-center text-sm font-mono" style={{color:'#4A4A4A'}}>no skills added yet.</div>}
       <style>{`.skg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}@media(max-width:640px){.skg{grid-template-columns:repeat(2,1fr)}}`}</style>
       <div className="skg">
-        {skills.filter(p=>isAdmin||!p.is_hidden).map(p=>(
+        {skills.map(p=>(
           p.is_locked
-            ? <LockedTile key={p.id} title={p.name} subtitle="coming soon"/>
-            : <ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>onSelectSkill(p)} onEdit={()=>setEditSkill(p)} onHide={()=>hide(p)} onDelete={()=>del(p)}/>
+            ?<LockedTile key={p.id} title={p.name}/>
+            :<ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>onSelectSkill(p)} onEdit={()=>setEditSkill(p)} onHide={()=>hide(p)} onDelete={()=>del(p)}/>
         ))}
         {isAdmin&&<AddProjectTile onClick={()=>setShowAdd(true)} nextSlot={nextSlot}/>}
       </div>
-      <ProjectModal open={showAdd} onOpenChange={setShowAdd} onSaved={()=>{setShowAdd(false);load();}} nextSlot={nextSlot} defaultType="skill" channelId={channel.id}/>
-      <ProjectModal open={!!editSkill} onOpenChange={o=>{if(!o)setEditSkill(null);}} onSaved={()=>{setEditSkill(null);load();}} existing={editSkill} nextSlot={nextSlot} channelId={channel.id}/>
+      <ProjectModal open={showAdd} onOpenChange={setShowAdd} onSaved={()=>{setShowAdd(false);load();}} nextSlot={nextSlot} defaultType="skill"/>
+      <ProjectModal open={!!editSkill} onOpenChange={o=>{if(!o)setEditSkill(null);}} onSaved={()=>{setEditSkill(null);load();}} existing={editSkill} nextSlot={nextSlot}/>
     </div>
   );
 };
@@ -693,7 +686,7 @@ const InfoFlowView = ({onExpertDir,onBack}:{onExpertDir:()=>void;onBack:()=>void
     <h2 className="text-lg font-bold mb-5" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>information inflow</h2>
     <style>{`.iflg{display:grid;grid-template-columns:repeat(2,1fr);gap:3px}@media(max-width:480px){.iflg{grid-template-columns:1fr}}`}</style>
     <div className="iflg">
-      <LockedTile title="Market Analysis AI Agent" subtitle="coming soon"/>
+      <LockedTile title="Market Analysis AI Agent"/>
       <HubNavTile title="Expert's Judgement" subtitle="Curated directory of builders, founders & experts" gradIdx={7} onClick={onExpertDir} icon={BookOpen} minHeight={160}/>
     </div>
   </div>
@@ -701,8 +694,7 @@ const InfoFlowView = ({onExpertDir,onBack}:{onExpertDir:()=>void;onBack:()=>void
 
 // ─── Info & Skills View ───────────────────────────────────────
 const InfoSkillsView = ({channel,isAdmin,onInfoFlow,onSkillsEnter,onBack,onSelectSkill}:{
-  channel:Channel;isAdmin:boolean;onInfoFlow:()=>void;onSkillsEnter:()=>void;
-  onBack:()=>void;onSelectSkill:(p:ChannelProject)=>void;
+  channel:Channel;isAdmin:boolean;onInfoFlow:()=>void;onSkillsEnter:()=>void;onBack:()=>void;onSelectSkill:(p:ChannelProject)=>void;
 }) => (
   <div>
     <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-5 hover:text-primary" style={{color:'#A09890'}}><ArrowLeft className="h-3.5 w-3.5"/>back</button>
@@ -715,73 +707,29 @@ const InfoSkillsView = ({channel,isAdmin,onInfoFlow,onSkillsEnter,onBack,onSelec
   </div>
 );
 
-// ─── Projects View (inner tile grid) ─────────────────────────
-const ProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{channel:Channel;isAdmin:boolean;onSelectProject:(p:ChannelProject)=>void;onBack:()=>void}) => {
-  const [projects,setProjects]=useState<ChannelProject[]>([]);
-  const [showAdd,setShowAdd]=useState(false);
-  const [editProject,setEditProject]=useState<ChannelProject|null>(null);
-
-  const load=useCallback(async()=>{
-    const q=isAdmin
-      ?supabase.from('channel_projects').select('*').eq('channel_id',channel.id).eq('is_active',true).not('project_type','eq','skill').order('slot_number')
-      :supabase.from('channel_projects').select('*').eq('channel_id',channel.id).eq('is_active',true).eq('is_hidden',false).not('project_type','eq','skill').order('slot_number');
-    const {data}=await q;
-    setProjects(data??[]);
-  },[channel.id,isAdmin]);
-
-  useEffect(()=>{load();},[load]);
-
-  const used=projects.map(p=>p.slot_number);
-  const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
-
-  const hide=async(p:ChannelProject)=>{
-    await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);
-    toast.success(p.is_hidden?'visible':'hidden');load();
-  };
-  const del=async(p:ChannelProject)=>{
-    if(!window.confirm(`Delete "${p.name}"?`))return;
-    await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);
-    toast.success('removed');load();
-  };
-
-  return (
-    <div>
-      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-5 hover:text-primary" style={{color:'#A09890'}}><ArrowLeft className="h-3.5 w-3.5"/>back</button>
-      <p className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{color:'rgba(255,255,255,0.25)'}}>some valuable stuff from</p>
-      <h2 className="text-xl font-bold mb-5" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>projects we are working on</h2>
-      <style>{`.pvg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}@media(max-width:640px){.pvg{grid-template-columns:repeat(2,1fr)}}`}</style>
-      <div className="pvg">
-        {projects.map(p=>(
-          p.is_locked
-            ? <LockedTile key={p.id} title={p.name}/>
-            : <ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>onSelectProject(p)} onEdit={()=>setEditProject(p)} onHide={()=>hide(p)} onDelete={()=>del(p)}/>
-        ))}
-        {isAdmin&&<AddProjectTile onClick={()=>setShowAdd(true)} nextSlot={nextSlot}/>}
-      </div>
-      <ProjectModal open={showAdd} onOpenChange={setShowAdd} onSaved={()=>{setShowAdd(false);load();}} nextSlot={nextSlot} defaultType="project" channelId={channel.id}/>
-      <ProjectModal open={!!editProject} onOpenChange={o=>{if(!o)setEditProject(null);}} onSaved={()=>{setEditProject(null);load();}} existing={editProject} nextSlot={nextSlot} channelId={channel.id}/>
-    </div>
-  );
-};
-
 // ─── Hub View ─────────────────────────────────────────────────
-const HubView = ({channel,isAdmin,onInfoSkills,onProjects,onSelectProject}:{
-  channel:Channel;isAdmin:boolean;onInfoSkills:()=>void;onProjects:()=>void;onSelectProject:(p:ChannelProject)=>void;
+// Layout: [Info & Skills tile] then heading + all project tiles
+// NOTE: channel_projects has NO channel_id — load all active projects
+const HubView = ({channel,isAdmin,onInfoSkills,onSelectProject}:{
+  channel:Channel;isAdmin:boolean;onInfoSkills:()=>void;onSelectProject:(p:ChannelProject)=>void;
 }) => {
   const [projects,setProjects]=useState<ChannelProject[]>([]);
   const [editProject,setEditProject]=useState<ChannelProject|null>(null);
   const [showAdd,setShowAdd]=useState(false);
 
   const load=useCallback(async()=>{
+    // Load ALL active projects (no project_type='skill' ones) — no channel_id filter
     const q=isAdmin
-      ?supabase.from('channel_projects').select('*').eq('channel_id',channel.id).eq('is_active',true).not('project_type','eq','skill').order('slot_number')
-      :supabase.from('channel_projects').select('*').eq('channel_id',channel.id).eq('is_active',true).eq('is_hidden',false).not('project_type','eq','skill').order('slot_number');
-    const {data}=await q;setProjects(data??[]);
-  },[channel.id,isAdmin]);
+      ?supabase.from('channel_projects').select('*').eq('is_active',true).order('slot_number')
+      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).order('slot_number');
+    const {data}=await q;
+    // Exclude skills if project_type column exists
+    setProjects((data??[]).filter((p:ChannelProject)=>p.project_type!=='skill'));
+  },[isAdmin]);
 
   useEffect(()=>{load();},[load]);
   useEffect(()=>{
-    const ch=supabase.channel('hub_cp').on('postgres_changes',{event:'*',schema:'public',table:'channel_projects'},load).subscribe();
+    const ch=supabase.channel('hub_cp_rt').on('postgres_changes',{event:'*',schema:'public',table:'channel_projects'},load).subscribe();
     return ()=>{supabase.removeChannel(ch);};
   },[load]);
 
@@ -791,28 +739,34 @@ const HubView = ({channel,isAdmin,onInfoSkills,onProjects,onSelectProject}:{
   const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
 
   return (
-    <div className="space-y-8">
-      {/* Top two tiles */}
-      <style>{`.htg{display:grid;grid-template-columns:1fr 1fr;gap:3px}@media(max-width:480px){.htg{grid-template-columns:1fr}}.ptsg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}@media(max-width:640px){.ptsg{grid-template-columns:repeat(2,1fr)}}`}</style>
-      <div className="htg">
-        <HubNavTile title="Information & Skills" subtitle="Info inflow · Expert directory · Skill acquisition" gradIdx={14} onClick={onInfoSkills} icon={BookOpen} minHeight={220}/>
-        <HubNavTile title="All Projects" subtitle="Public documentation of what we're building" gradIdx={20} onClick={onProjects} icon={Layers} minHeight={220}/>
-      </div>
-      {/* Projects inline grid */}
+    <div className="space-y-6">
+      {/* Info & Skills — single full-width navigation tile */}
+      <HubNavTile
+        title="Information & Skills"
+        subtitle="Info inflow · Expert directory · Skill acquisition"
+        gradIdx={14}
+        onClick={onInfoSkills}
+        icon={BookOpen}
+        minHeight={160}
+      />
+
+      {/* Projects section */}
       <div>
-        <p className="text-[10px] font-mono uppercase tracking-widest mb-1.5" style={{color:'rgba(255,255,255,0.2)'}}>some valuable stuff from</p>
+        <p className="text-[10px] font-mono uppercase tracking-widest mb-1" style={{color:'rgba(255,255,255,0.2)'}}>some valuable stuff from</p>
         <h3 className="text-base font-bold mb-4" style={{color:'#F5F0EB',letterSpacing:'-0.01em'}}>projects we are working on</h3>
-        <div className="ptsg">
+        <style>{`.hubpg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}@media(max-width:640px){.hubpg{grid-template-columns:repeat(2,1fr)}}`}</style>
+        <div className="hubpg">
           {projects.map(p=>(
             p.is_locked
-              ? <LockedTile key={p.id} title={p.name}/>
-              : <ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>onSelectProject(p)} onEdit={()=>setEditProject(p)} onHide={()=>hide(p)} onDelete={()=>del(p)}/>
+              ?<LockedTile key={p.id} title={p.name}/>
+              :<ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>onSelectProject(p)} onEdit={()=>setEditProject(p)} onHide={()=>hide(p)} onDelete={()=>del(p)}/>
           ))}
           {isAdmin&&<AddProjectTile onClick={()=>setShowAdd(true)} nextSlot={nextSlot}/>}
         </div>
       </div>
-      <ProjectModal open={showAdd} onOpenChange={setShowAdd} onSaved={()=>{setShowAdd(false);load();}} nextSlot={nextSlot} defaultType="project" channelId={channel.id}/>
-      <ProjectModal open={!!editProject} onOpenChange={o=>{if(!o)setEditProject(null);}} onSaved={()=>{setEditProject(null);load();}} existing={editProject} nextSlot={nextSlot} channelId={channel.id}/>
+
+      <ProjectModal open={showAdd} onOpenChange={setShowAdd} onSaved={()=>{setShowAdd(false);load();}} nextSlot={nextSlot} defaultType="project"/>
+      <ProjectModal open={!!editProject} onOpenChange={o=>{if(!o)setEditProject(null);}} onSaved={()=>{setEditProject(null);load();}} existing={editProject} nextSlot={nextSlot}/>
     </div>
   );
 };
@@ -820,28 +774,23 @@ const HubView = ({channel,isAdmin,onInfoSkills,onProjects,onSelectProject}:{
 // ─── Main Export ──────────────────────────────────────────────
 export const GeneralChannelPage = ({channel}:{channel:Channel}) => {
   const {isAdmin}=useAuth();
-  type View = 'hub'|'info-skills'|'info-flow'|'expert'|'skills'|'projects'|'project'|'skill-detail';
+  type View='hub'|'info-skills'|'info-flow'|'expert'|'skills'|'project'|'skill-detail';
   const [history,setHistory]=useState<View[]>(['hub']);
   const [activeProject,setActiveProject]=useState<ChannelProject|null>(null);
   const view=history[history.length-1];
   const push=(v:View)=>setHistory(h=>[...h,v]);
   const pop=()=>setHistory(h=>h.length>1?h.slice(0,-1):h);
 
-  const selectProject=(p:ChannelProject)=>{setActiveProject(p);push('project');};
-  const selectSkill=(p:ChannelProject)=>{setActiveProject(p);push('skill-detail');};
-
   if(view==='project'&&activeProject) return <ProjectView channel={channel} project={activeProject} onBack={pop}/>;
   if(view==='skill-detail'&&activeProject) return <ProjectView channel={channel} project={activeProject} onBack={pop}/>;
   if(view==='expert') return <ExpertDirectoryView onBack={pop}/>;
-  if(view==='skills') return <SkillsView channel={channel} isAdmin={isAdmin} onSelectSkill={selectSkill} onBack={pop}/>;
+  if(view==='skills') return <SkillsView channel={channel} isAdmin={isAdmin} onSelectSkill={p=>{setActiveProject(p);push('skill-detail');}} onBack={pop}/>;
   if(view==='info-flow') return <InfoFlowView onExpertDir={()=>push('expert')} onBack={pop}/>;
-  if(view==='info-skills') return <InfoSkillsView channel={channel} isAdmin={isAdmin} onInfoFlow={()=>push('info-flow')} onSkillsEnter={()=>push('skills')} onBack={pop} onSelectSkill={selectSkill}/>;
-  if(view==='projects') return <ProjectsView channel={channel} isAdmin={isAdmin} onSelectProject={selectProject} onBack={pop}/>;
+  if(view==='info-skills') return <InfoSkillsView channel={channel} isAdmin={isAdmin} onInfoFlow={()=>push('info-flow')} onSkillsEnter={()=>push('skills')} onBack={pop} onSelectSkill={p=>{setActiveProject(p);push('skill-detail');}}/>;
 
-  // hub
   return (
     <>
-      <HubView channel={channel} isAdmin={isAdmin} onInfoSkills={()=>push('info-skills')} onProjects={()=>push('projects')} onSelectProject={selectProject}/>
+      <HubView channel={channel} isAdmin={isAdmin} onInfoSkills={()=>push('info-skills')} onSelectProject={p=>{setActiveProject(p);push('project');}}/>
       <FloatingActions defaultChannelId={channel.id}/>
     </>
   );
