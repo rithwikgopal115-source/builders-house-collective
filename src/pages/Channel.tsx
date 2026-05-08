@@ -17,7 +17,7 @@ import {
   Star, Zap, Lightbulb, Music, Briefcase, Trophy,
   Send, ArrowLeft, Pencil, Trash2,
   FileText, Link as LinkIcon, Youtube, FileType, LayoutTemplate,
-  Users, Globe, Lock,
+  Users, Globe, Lock, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 // Channel routing
@@ -330,6 +330,7 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
   const [messages, setMessages] = useState<any[]>([]);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editingMsgContent, setEditingMsgContent] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -391,15 +392,29 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
 
   return (
     <aside
-      className="flex flex-col self-start sticky top-20"
-      style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, height: "calc(100vh - 8rem)" }}
+      className="flex flex-col self-start sticky top-20 transition-all duration-200"
+      style={{
+        background: "#161616",
+        border: "1px solid rgba(255,255,255,0.06)",
+        borderRadius: 16,
+        height: collapsed ? "auto" : "calc(100vh - 8rem)",
+      }}
     >
-      <header className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div className="text-xs font-mono uppercase tracking-wider" style={{ color: "#A09890" }}>group chat</div>
-        <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>{channelName.toLowerCase()}</div>
+      <header
+        className="px-4 py-3 flex items-center justify-between cursor-pointer select-none hover:bg-white/[0.02] transition-colors rounded-t-2xl"
+        style={{ borderBottom: collapsed ? "none" : "1px solid rgba(255,255,255,0.06)" }}
+        onClick={() => setCollapsed(c => !c)}
+      >
+        <div>
+          <div className="text-xs font-mono uppercase tracking-wider" style={{ color: "#A09890" }}>group chat</div>
+          <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>{channelName.toLowerCase()}</div>
+        </div>
+        <button className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10 flex-shrink-0" style={{ color: "#A09890" }}>
+          {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+        </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      {!collapsed && <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
           <p className="text-xs font-mono text-center py-8" style={{ color: "#A09890" }}>no messages yet — say hi.</p>
         )}
@@ -457,9 +472,9 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
           );
         })}
         <div ref={endRef} />
-      </div>
+      </div>}
 
-      {profile?.is_approved && (
+      {!collapsed && profile?.is_approved && (
         <div className="p-3 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <input
             value={draft}
