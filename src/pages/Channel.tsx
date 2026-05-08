@@ -74,7 +74,7 @@ const ChannelPage = () => {
 
     const { data: ps } = await supabase
       .from("posts")
-      .select("id, channel_id, user_id, title, content, type, url, visibility, created_at, is_pinned, is_resource, profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
+      .select("id, channel_id, user_id, title, content, type, url, image_urls, visibility, created_at, is_pinned, is_resource, profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
       .eq("channel_id", ch.id)
       .order("is_pinned", { ascending: false })
       .order("created_at", { ascending: false })
