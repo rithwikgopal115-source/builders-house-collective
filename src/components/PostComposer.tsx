@@ -101,6 +101,7 @@ export const PostComposer = ({
   const [imageUrls,    setImageUrls]    = useState<string[]>([]);
   const [uploading,    setUploading]    = useState(false);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const [ideaCategory, setIdeaCategory] = useState<string | null>(null);
   const [visibility,   setVisibility]   = useState<"community" | "public" | "private">("community");
   const [isResource,   setIsResource]   = useState(!!defaultIsResource);
   const [busy,         setBusy]         = useState(false);
@@ -209,11 +210,14 @@ export const PostComposer = ({
     setImageUrls((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  // ── Derived ────────────────────────────────────────────────
+  const isIdeasChannel = selectedChannel?.slug === "ideas";
+
   // ── Reset ──────────────────────────────────────────────────
   const reset = () => {
     setTitle(""); setContent(""); setUrl(""); setType("text");
     setVisibility("community"); setIsResource(!!defaultIsResource);
-    setImageUrls([]); setYtPreview(null);
+    setImageUrls([]); setYtPreview(null); setIdeaCategory(null);
     setProjectId(defaultProjectId ?? null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -259,9 +263,10 @@ export const PostComposer = ({
       type:        dbType(type),
       url:         url.trim() || null,
       image_urls:  imageUrls.length ? imageUrls : [],
-      project_id:  isProjectChannel ? (projectId ?? null) : null,
-      visibility:  insertVisibility,
-      is_resource: isResource,
+      project_id:    isProjectChannel ? (projectId ?? null) : null,
+      idea_category: isIdeasChannel && projectId ? ideaCategory : (isIdeasChannel && !projectId ? ideaCategory : null),
+      visibility:    insertVisibility,
+      is_resource:   isResource,
     }).select("id").maybeSingle();
 
     if (error) { setBusy(false); toast.error(error.message); return; }
@@ -471,6 +476,41 @@ export const PostComposer = ({
                   <span className="text-xs font-mono" style={{ color: "#6A6460" }}>
                     no projects yet — admin can add them
                   </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Idea category (ideas channel only) ── */}
+          {isIdeasChannel && !isEditMode && (
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>
+                {projectId ? "idea category" : "idea type"}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {projectId ? (
+                  // In a project: show idea categories
+                  [
+                    { k: null,                 l: "general" },
+                    { k: "ai-foundations",     l: "AI Foundations" },
+                    { k: "prompt-engineering", l: "Prompt Engineering" },
+                    { k: "platform-mastery",   l: "Platform Mastery" },
+                    { k: "skill-acq",          l: "Skill Acq" },
+                    { k: "integration",        l: "Integration" },
+                    { k: "automation",         l: "Automation" },
+                    { k: "random-project",     l: "Random" },
+                  ].map(({ k, l }) => (
+                    <button key={String(k)} onClick={() => setIdeaCategory(k)} className="font-mono" style={PillStyle(ideaCategory === k)}>{l}</button>
+                  ))
+                ) : (
+                  // No project: new project idea or random
+                  [
+                    { k: null,            l: "general" },
+                    { k: "new-project",   l: "New Project Idea" },
+                    { k: "random",        l: "Random" },
+                  ].map(({ k, l }) => (
+                    <button key={String(k)} onClick={() => setIdeaCategory(k)} className="font-mono" style={PillStyle(ideaCategory === k)}>{l}</button>
+                  ))
                 )}
               </div>
             </div>
