@@ -208,9 +208,9 @@ const AddProjectTile = ({onClick,nextSlot,style}:{onClick:()=>void;nextSlot:numb
 
 // ─── ProjectModal ─────────────────────────────────────────────
 // NOTE: NO channel_id — channel_projects is a global table with no channel_id column
-const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='project'}:{
+const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='project',parentProjectId}:{
   open:boolean;onOpenChange:(o:boolean)=>void;onSaved:()=>void;
-  existing?:ChannelProject|null;nextSlot:number;defaultType?:string;
+  existing?:ChannelProject|null;nextSlot:number;defaultType?:string;parentProjectId?:string;
 }) => {
   const {user}=useAuth();
   const isEdit=!!existing;
@@ -247,6 +247,7 @@ const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='
         slot_number:nextSlot,name:name.trim(),description:desc.trim()||null,
         gradient_idx:gradIdx,project_type:projType,is_locked:isLocked,
         is_active:true,is_hidden:false,
+        ...(parentProjectId?{parent_project_id:parentProjectId}:{}),
       }));
     }
     setBusy(false);
@@ -357,15 +358,61 @@ const PostFeed = ({channelId,projectId}:{channelId:string;projectId:string|null|
 };
 
 // ─── ProjectView ──────────────────────────────────────────────
+// Shows project header + sub-project tiles + post feed.
+// Clicking a sub-tile drills into that sub-project's feed.
 const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelProject;onBack:()=>void}) => {
+  const {isAdmin}=useAuth();
   const idx=Math.min((project.gradient_idx??project.slot_number-1),29);
   const g=GRADIENTS[idx];const tc=getTextColor(idx);
   const [videoCollapsed,setVideoCollapsed]=useState(false);
+  const [subProjects,setSubProjects]=useState<ChannelProject[]>([]);
+  const [activeSub,setActiveSub]=useState<ChannelProject|null>(null);
+  const [showAddSub,setShowAddSub]=useState(false);
+  const [editSub,setEditSub]=useState<ChannelProject|null>(null);
+
+  const loadSubs=useCallback(async()=>{
+    const {data}=await supabase.from('channel_projects').select('*')
+      .eq('parent_project_id',project.id).eq('is_active',true).order('slot_number');
+    setSubProjects(data??[]);
+  },[project.id]);
+  useEffect(()=>{loadSubs();},[loadSubs]);
+
+  const usedSlots=subProjects.map(p=>p.slot_number);
+  const nextSubSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!usedSlots.includes(n))??1;
+  const hideSub=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);loadSubs();};
+  const delSub=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);loadSubs();};
+
+  // ── Sub-project feed view ──
+  if(activeSub){
+    const si=Math.min((activeSub.gradient_idx??activeSub.slot_number-1),29);
+    const sg=GRADIENTS[si];const stc=getTextColor(si);
+    return (
+      <div>
+        <button onClick={()=>setActiveSub(null)} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 hover:text-primary" style={{color:'#A09890'}}>
+          <ArrowLeft className="h-3.5 w-3.5"/>{project.name}
+        </button>
+        <div className="mb-5 p-4 relative overflow-hidden" style={{background:gradientCss(sg.base),borderRadius:0}}>
+          <div style={{position:'absolute',bottom:-8,right:6,fontSize:'5rem',fontWeight:900,color:'#FFF',opacity:0.07,lineHeight:1,userSelect:'none',letterSpacing:'-0.05em'}}>{activeSub.slot_number}</div>
+          <p className="text-[10px] font-mono uppercase tracking-widest mb-1.5" style={{color:`${stc}66`}}>{project.name.toLowerCase()} · sub-project</p>
+          <div style={{display:'inline-block',border:`1px solid ${stc}`,padding:'3px 10px'}}>
+            <span className="text-lg font-bold" style={{color:stc}}>{activeSub.name}</span>
+          </div>
+          {activeSub.description&&<p className="mt-1.5 text-xs" style={{color:`${stc}99`}}>{activeSub.description}</p>}
+        </div>
+        <PostFeed channelId={channel.id} projectId={activeSub.id}/>
+        <FloatingActions defaultChannelId={channel.id} defaultProjectId={activeSub.id}/>
+      </div>
+    );
+  }
+
+  // ── Main project view ──
   return (
     <div>
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 hover:text-primary" style={{color:'#A09890'}}>
         <ArrowLeft className="h-3.5 w-3.5"/>back
       </button>
+
+      {/* Project header */}
       <div className="mb-5 p-5 relative overflow-hidden" style={{background:gradientCss(g.base),borderRadius:0}}>
         <div style={{position:'absolute',bottom:-10,right:8,fontSize:'6rem',fontWeight:900,color:'#FFF',opacity:0.07,lineHeight:1,userSelect:'none',letterSpacing:'-0.05em'}}>{project.slot_number}</div>
         <p className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{color:`${tc}66`}}>{channel.name.toLowerCase()}</p>
@@ -374,6 +421,8 @@ const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelPr
         </div>
         {project.description&&<p className="mt-2 text-sm" style={{color:`${tc}99`}}>{project.description}</p>}
       </div>
+
+      {/* Intro video */}
       {project.intro_video_url&&(
         <div className="mb-5">
           <button onClick={()=>setVideoCollapsed(v=>!v)} className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider mb-2 hover:opacity-80" style={{color:'#A09890'}}>
@@ -387,8 +436,43 @@ const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelPr
           )}
         </div>
       )}
+
+      {/* Sub-project tiles */}
+      {(subProjects.length>0||isAdmin)&&(
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest" style={{color:'rgba(255,255,255,0.25)'}}>sub-projects</p>
+            {isAdmin&&(
+              <button onClick={()=>setShowAddSub(true)} className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider hover:opacity-80" style={{color:'#E8734A'}}>
+                <Plus className="h-3 w-3"/>add tile
+              </button>
+            )}
+          </div>
+          <style>{`.subpg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}@media(max-width:640px){.subpg{grid-template-columns:repeat(2,1fr)}}`}</style>
+          <div className="subpg">
+            {subProjects.map(p=>(
+              p.is_locked
+                ?<LockedTile key={p.id} title={p.name}/>
+                :<ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>setActiveSub(p)} onEdit={()=>setEditSub(p)} onHide={()=>hideSub(p)} onDelete={()=>delSub(p)}/>
+            ))}
+          </div>
+          {subProjects.length===0&&isAdmin&&(
+            <div className="py-8 text-center text-xs font-mono" style={{color:'#4A4A4A',border:'1px dashed rgba(255,255,255,0.06)',borderRadius:4}}>
+              no sub-projects yet — click add tile above
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Posts */}
       <PostFeed channelId={channel.id} projectId={project.id}/>
       <FloatingActions defaultChannelId={channel.id} defaultProjectId={project.id}/>
+
+      <ProjectModal open={showAddSub} onOpenChange={setShowAddSub}
+        onSaved={()=>{setShowAddSub(false);loadSubs();}}
+        nextSlot={nextSubSlot} defaultType="project" parentProjectId={project.id}/>
+      <ProjectModal open={!!editSub} onOpenChange={o=>{if(!o)setEditSub(null);}}
+        onSaved={()=>{setEditSub(null);loadSubs();}} existing={editSub} nextSlot={nextSubSlot}/>
     </div>
   );
 };
