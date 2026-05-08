@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { AvatarBlock } from "./AvatarBlock";
-import { MessageCircle, ExternalLink, Globe, Pin, Play } from "lucide-react";
+import { MessageCircle, ExternalLink, Globe, Pin, Play, Heart, UserX } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ export interface FeedPost {
   content: string;
   type: "text" | "link" | "video" | "doc" | string | null;
   url: string | null;
+  image_urls?: string[] | null;       // ← multiple images
   visibility?: "community" | "public" | "private" | string | null;
   is_resource?: boolean | null;
   created_at: string;
@@ -35,24 +36,27 @@ const EMOJIS = ["🔥", "💯", "🧠", "👀", "🙌"];
 const ytId = (url: string): string | null => {
   try {
     const u = new URL(url);
-    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1) || null;
+    if (u.hostname.includes("youtu.be"))      return u.pathname.slice(1) || null;
     if (u.hostname.includes("youtube.com")) {
-      if (u.pathname.startsWith("/watch")) return u.searchParams.get("v");
-      if (u.pathname.startsWith("/shorts/")) return u.pathname.split("/")[2] || null;
-      if (u.pathname.startsWith("/embed/")) return u.pathname.split("/")[2] || null;
+      if (u.pathname.startsWith("/watch"))    return u.searchParams.get("v");
+      if (u.pathname.startsWith("/shorts/"))  return u.pathname.split("/")[2] || null;
+      if (u.pathname.startsWith("/embed/"))   return u.pathname.split("/")[2] || null;
     }
   } catch {}
   return null;
 };
 
-const isImage = (url: string) => /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url);
-const safeHost = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
+const isImageUrl = (url: string) => /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url);
+const safeHost   = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
+// ─────────────────────────────────────────────────────────────
+// PostCard
+// ─────────────────────────────────────────────────────────────
 export const PostCard = ({
   post,
-  showChannel = false,
-  compact = false,
-  readOnly = false,
+  showChannel   = false,
+  compact       = false,
+  readOnly      = false,
   onAdminRequestPublic,
 }: {
   post: FeedPost;
@@ -62,25 +66,47 @@ export const PostCard = ({
   onAdminRequestPublic?: (post: FeedPost) => void;
 }) => {
   const { user, profile, isAdmin } = useAuth();
-  const [reactionCount, setReactionCount] = useState(post.reaction_count ?? 0);
-  const [commentCount, setCommentCount] = useState(post.comment_count ?? 0);
-  const [comments, setComments] = useState<any[]>([]);
-  const [showComments, setShowComments] = useState(false);
-  const [newComment, setNewComment] = useState("");
-  const [reactedEmojis, setReactedEmojis] = useState<Set<string>>(new Set());
-  const [playVideo, setPlayVideo] = useState(false);
 
+  const isMember = !!(user && profile?.is_approved);
+
+  const [reactionCount,  setReactionCount]  = useState(post.reaction_count ?? 0);
+  const [commentCount,   setCommentCount]   = useState(post.comment_count  ?? 0);
+  const [comments,       setComments]       = useState<any[]>([]);
+  const [showComments,   setShowComments]   = useState(false);
+  const [newComment,     setNewComment]     = useState("");
+  const [reactedEmojis,  setReactedEmojis]  = useState<Set<string>>(new Set());
+  const [playVideo,      setPlayVideo]      = useState(false);
+  const [lightboxIdx,    setLightboxIdx]    = useState<number | null>(null);
+
+  // ── Fetch accurate counts on mount ────────────────────────
   useEffect(() => {
-    if (user) {
-      supabase
-        .from("reactions")
-        .select("emoji")
-        .eq("post_id", post.id)
-        .eq("user_id", user.id)
-        .then(({ data }) => { if (data) setReactedEmojis(new Set(data.map((r) => r.emoji))); });
-    }
+    // Reaction count (works for public posts even without auth)
+    supabase
+      .from("reactions")
+      .select("*", { count: "exact", head: true })
+      .eq("post_id", post.id)
+      .then(({ count }) => { if (count !== null) setReactionCount(count); });
+
+    // Comment count
+    supabase
+      .from("comments")
+      .select("*", { count: "exact", head: true })
+      .eq("post_id", post.id)
+      .then(({ count }) => { if (count !== null) setCommentCount(count); });
+  }, [post.id]);
+
+  // ── Which emojis did THIS member already react with ───────
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("reactions")
+      .select("emoji")
+      .eq("post_id", post.id)
+      .eq("user_id", user.id)
+      .then(({ data }) => { if (data) setReactedEmojis(new Set(data.map((r) => r.emoji))); });
   }, [user, post.id]);
 
+  // ── Load comments ─────────────────────────────────────────
   const loadComments = async () => {
     const { data } = await supabase
       .from("comments")
@@ -90,33 +116,41 @@ export const PostCard = ({
     setComments(data ?? []);
   };
 
-  const toggleComments = () => { if (!showComments) loadComments(); setShowComments((s) => !s); };
+  const toggleComments = () => {
+    if (!showComments) loadComments();
+    setShowComments((s) => !s);
+  };
 
+  // ── Emoji react (members only) ────────────────────────────
   const react = async (emoji: string) => {
-    if (!user || !profile?.is_approved) { toast.error("only approved members can react"); return; }
+    if (!isMember) {
+      toast("join builders house to react 🔥", { description: "members-only feature" });
+      return;
+    }
     if (reactedEmojis.has(emoji)) {
-      await supabase.from("reactions").delete().eq("post_id", post.id).eq("user_id", user.id).eq("emoji", emoji);
+      await supabase.from("reactions").delete().eq("post_id", post.id).eq("user_id", user!.id).eq("emoji", emoji);
       setReactedEmojis((s) => { const n = new Set(s); n.delete(emoji); return n; });
       setReactionCount((c) => Math.max(0, c - 1));
     } else {
-      await supabase.from("reactions").insert({ post_id: post.id, user_id: user.id, emoji });
+      await supabase.from("reactions").insert({ post_id: post.id, user_id: user!.id, emoji });
       setReactedEmojis((s) => new Set(s).add(emoji));
       setReactionCount((c) => c + 1);
     }
   };
 
+  // ── Submit comment (members only) ─────────────────────────
   const submitComment = async () => {
-    if (!newComment.trim() || !user || !profile?.is_approved) return;
+    if (!newComment.trim() || !isMember) return;
     const { error } = await supabase
       .from("comments")
-      .insert({ post_id: post.id, user_id: user.id, content: newComment.trim() });
+      .insert({ post_id: post.id, user_id: user!.id, content: newComment.trim() });
     if (error) { toast.error(error.message); return; }
-    if (post.user_id !== user.id) {
+    if (post.user_id !== user!.id) {
       await supabase.from("notifications").insert({
         recipient_id: post.user_id,
-        type: "comment",
-        related_id: post.id,
-        content: `${profile.display_name} replied to your post`,
+        type:         "comment",
+        related_id:   post.id,
+        content:      `${profile!.display_name} replied to your post`,
       });
     }
     setNewComment("");
@@ -125,41 +159,36 @@ export const PostCard = ({
   };
 
   const authorName = readOnly ? "builders house" : (post.author?.display_name ?? "member");
-  const showAuthor = !readOnly;
-  const yt = post.url && post.type === "video" ? ytId(post.url) : null;
-  const showImage = post.url && isImage(post.url);
-  const showLinkPreview = post.url && !yt && !showImage;
 
+  const yt         = post.url && post.type === "video" ? ytId(post.url) : null;
+  const showImage  = post.url && isImageUrl(post.url) && !yt;
+  const showLink   = post.url && !yt && !showImage;
+
+  // Collect all images: dedicated image_urls first, then fallback to url if it's an image
+  const allImages: string[] = [
+    ...(Array.isArray(post.image_urls) ? post.image_urls : []),
+    ...(showImage ? [post.url!] : []),
+  ];
+
+  // ─────────────────────────────────────────────────────────
   return (
     <article
       className="animate-fade-in"
       style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 24 }}
     >
-      {/* Top row: avatar + name + builder pill + timestamp */}
+      {/* ── Author row ── */}
       <div className="flex items-center gap-3 mb-3">
-        {showAuthor ? (
+        {!readOnly ? (
           <Link to={`/profile/${post.user_id}`} className="flex items-center gap-3 group min-w-0 flex-1">
             <AvatarBlock url={post.author?.avatar_url} name={authorName} size={32} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium truncate" style={{ color: "#F5F0EB" }}>{authorName}</span>
-                <span
-                  className="text-[11px] uppercase tracking-wider"
-                  style={{
-                    background: "#2A1A0E",
-                    color: "#E8734A",
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    fontSize: 11,
-                  }}
-                >
+                <span className="text-[11px] uppercase tracking-wider" style={{ background: "#2A1A0E", color: "#E8734A", padding: "2px 8px", borderRadius: 999 }}>
                   builder
                 </span>
                 {post.author?.is_admin && (
-                  <span
-                    className="text-[11px] uppercase tracking-wider"
-                    style={{ background: "#1E1E1E", color: "#C9B99A", padding: "2px 8px", borderRadius: 999, fontSize: 11 }}
-                  >
+                  <span className="text-[11px] uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#C9B99A", padding: "2px 8px", borderRadius: 999 }}>
                     admin
                   </span>
                 )}
@@ -184,29 +213,19 @@ export const PostCard = ({
             </div>
           </div>
         )}
+
         <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-          {post.is_pinned && (
-            <Pin className="h-3.5 w-3.5" style={{ color: "#E8734A" }} />
-          )}
+          {post.is_pinned && <Pin className="h-3.5 w-3.5" style={{ color: "#E8734A" }} />}
           {post.visibility === "public" && (
-            <span
-              className="text-[10px] font-mono uppercase tracking-wider"
-              style={{ background: "#1A3A2A", color: "#7AC8A0", padding: "2px 8px", borderRadius: 999 }}
-            >
-              public
-            </span>
+            <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1A3A2A", color: "#7AC8A0", padding: "2px 8px", borderRadius: 999 }}>public</span>
           )}
           {post.visibility === "private" && (
-            <span
-              className="text-[10px] font-mono uppercase tracking-wider"
-              style={{ background: "#1E1E1E", color: "#8A8480", padding: "2px 8px", borderRadius: 999 }}
-            >
-              private
-            </span>
+            <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#8A8480", padding: "2px 8px", borderRadius: 999 }}>private</span>
           )}
         </div>
       </div>
 
+      {/* ── Title + Body ── */}
       {post.title && (
         <h3 className="font-medium mb-2 leading-snug" style={{ color: "#F5F0EB", fontSize: 15, letterSpacing: "-0.01em" }}>
           {post.title}
@@ -221,24 +240,16 @@ export const PostCard = ({
         </p>
       )}
 
-      {/* YouTube — thumbnail with coral play overlay until clicked */}
+      {/* ── YouTube embed ── */}
       {yt && !playVideo && (
         <button
           onClick={() => setPlayVideo(true)}
           className="mt-4 relative w-full aspect-video overflow-hidden block group"
           style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}
         >
-          <img
-            src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`}
-            alt={post.title || "video"}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <img src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`} alt={post.title || "video"} className="w-full h-full object-cover" loading="lazy" />
           <div className="absolute inset-0 flex items-center justify-center">
-            <div
-              className="flex items-center justify-center transition-transform group-hover:scale-110"
-              style={{ background: "rgba(232,115,74,0.9)", borderRadius: "50%", width: 48, height: 48 }}
-            >
+            <div className="flex items-center justify-center transition-transform group-hover:scale-110" style={{ background: "rgba(232,115,74,0.9)", borderRadius: "50%", width: 48, height: 48 }}>
               <Play className="h-5 w-5 ml-0.5" style={{ color: "#0D0D0D" }} fill="#0D0D0D" />
             </div>
           </div>
@@ -256,15 +267,30 @@ export const PostCard = ({
         </div>
       )}
 
-      {/* Image */}
-      {showImage && !yt && (
-        <a href={post.url!} target="_blank" rel="noreferrer" className="block mt-4">
-          <img src={post.url!} alt={post.title || "post image"} className="w-full" loading="lazy" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }} />
-        </a>
+      {/* ── Images (single or gallery) ── */}
+      {allImages.length > 0 && (
+        <div className={`mt-4 ${allImages.length > 1 ? "grid grid-cols-2 gap-1.5" : ""}`}>
+          {allImages.map((src, idx) => (
+            <button
+              key={idx}
+              onClick={() => setLightboxIdx(idx)}
+              className={`block overflow-hidden ${allImages.length === 1 ? "w-full" : ""}`}
+              style={{ borderRadius: allImages.length === 1 ? 12 : 8, border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <img
+                src={src}
+                alt={post.title || `image ${idx + 1}`}
+                loading="lazy"
+                className="w-full object-cover"
+                style={{ maxHeight: allImages.length === 1 ? undefined : 180 }}
+              />
+            </button>
+          ))}
+        </div>
       )}
 
-      {/* Link preview card */}
-      {showLinkPreview && (
+      {/* ── Link preview ── */}
+      {showLink && (
         <a
           href={post.url!}
           target="_blank"
@@ -272,95 +298,212 @@ export const PostCard = ({
           className="mt-4 flex items-stretch overflow-hidden transition-opacity hover:opacity-90"
           style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}
         >
-          <div
-            className="flex-shrink-0 flex items-center justify-center"
-            style={{ width: 80, background: "#0D0D0D" }}
-          >
+          <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 80, background: "#0D0D0D" }}>
             <ExternalLink className="h-5 w-5" style={{ color: "#8A8480" }} />
           </div>
           <div className="flex-1 min-w-0 p-3">
-            <div className="text-[10px] font-mono uppercase tracking-wider truncate" style={{ color: "#8A8480" }}>
-              {safeHost(post.url!)}
-            </div>
-            <div className="text-sm font-medium truncate mt-0.5" style={{ color: "#F5F0EB" }}>
-              {post.title || post.url}
-            </div>
+            <div className="text-[10px] font-mono uppercase tracking-wider truncate" style={{ color: "#8A8480" }}>{safeHost(post.url!)}</div>
+            <div className="text-sm font-medium truncate mt-0.5" style={{ color: "#F5F0EB" }}>{post.title || post.url}</div>
           </div>
         </a>
       )}
 
-      {/* Reaction row */}
+      {/* ── Reactions + Comments ── */}
       {!readOnly && (
-        <div className="mt-5 flex items-center gap-1.5 flex-wrap">
-          {EMOJIS.map((e) => {
-            const active = reactedEmojis.has(e);
-            return (
+        <>
+          {isMember ? (
+            /* ── Member view: emoji pill buttons ── */
+            <div className="mt-5 flex items-center gap-1.5 flex-wrap">
+              {EMOJIS.map((e) => {
+                const active = reactedEmojis.has(e);
+                return (
+                  <button
+                    key={e}
+                    onClick={() => react(e)}
+                    className="text-xs transition-colors"
+                    style={{
+                      background:   "#1E1E1E",
+                      border:       active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
+                      borderRadius: 999,
+                      padding:      "4px 10px",
+                      color:        active ? "#E8734A" : "#F5F0EB",
+                    }}
+                  >
+                    {e}
+                  </button>
+                );
+              })}
+              {reactionCount > 0 && (
+                <span className="text-xs font-mono ml-1" style={{ color: "#8A8480" }}>{reactionCount}</span>
+              )}
+              {isAdmin && post.visibility === "community" && onAdminRequestPublic && (
+                <button
+                  onClick={() => onAdminRequestPublic(post)}
+                  className="ml-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 transition-colors"
+                  style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 999, padding: "4px 10px", color: "#C9B99A" }}
+                >
+                  <Globe className="h-3 w-3" /> request public
+                </button>
+              )}
               <button
-                key={e}
-                onClick={() => react(e)}
-                className="text-xs transition-colors"
-                style={{
-                  background: "#1E1E1E",
-                  border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 999,
-                  padding: "4px 10px",
-                  fontSize: 12,
-                  color: active ? "#E8734A" : "#F5F0EB",
-                }}
+                onClick={toggleComments}
+                className="ml-auto text-xs flex items-center gap-1.5 font-mono transition-colors hover:text-foreground"
+                style={{ color: "#8A8480" }}
               >
-                {e}
+                <MessageCircle className="h-3.5 w-3.5" />
+                {commentCount} {commentCount === 1 ? "comment" : "comments"}
               </button>
-            );
-          })}
-          {reactionCount > 0 && (
-            <span className="text-xs font-mono ml-1" style={{ color: "#8A8480" }}>{reactionCount}</span>
+            </div>
+          ) : (
+            /* ── Non-member view: read-only counts + join prompt ── */
+            <div className="mt-5 flex items-center gap-3 flex-wrap">
+              <button
+                onClick={() => react("")}   /* react() checks isMember and shows toast */
+                className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
+                style={{ color: "#8A8480" }}
+              >
+                <Heart className="h-3.5 w-3.5" />
+                {reactionCount} {reactionCount === 1 ? "reaction" : "reactions"}
+              </button>
+              <button
+                onClick={toggleComments}
+                className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
+                style={{ color: "#8A8480" }}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                {commentCount} {commentCount === 1 ? "comment" : "comments"}
+              </button>
+              <Link
+                to="/login"
+                className="ml-auto text-[10px] font-mono uppercase tracking-wider"
+                style={{ color: "#E8734A" }}
+              >
+                join to interact →
+              </Link>
+            </div>
           )}
-          {isAdmin && post.visibility === "community" && onAdminRequestPublic && (
-            <button
-              onClick={() => onAdminRequestPublic(post)}
-              className="ml-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 transition-colors"
-              style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 999, padding: "4px 10px", color: "#C9B99A" }}
-            >
-              <Globe className="h-3 w-3" /> request public
-            </button>
-          )}
-          <button
-            onClick={toggleComments}
-            className="ml-auto text-xs flex items-center gap-1.5 font-mono transition-colors hover:text-foreground"
-            style={{ color: "#8A8480" }}
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-            {commentCount} {commentCount === 1 ? "comment" : "comments"}
-          </button>
-        </div>
+        </>
       )}
 
+      {/* ── Comments section ── */}
       {showComments && (
         <div className="mt-5 pt-5 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          {comments.length === 0 && (
+            <p className="text-xs font-mono text-center py-4" style={{ color: "#8A8480" }}>no comments yet.</p>
+          )}
           {comments.map((c) => (
             <div key={c.id} className="flex gap-2">
-              <AvatarBlock url={c.profiles?.avatar_url} name={c.profiles?.display_name ?? "?"} size={28} />
+              {isMember ? (
+                <AvatarBlock url={c.profiles?.avatar_url} name={c.profiles?.display_name ?? "?"} size={28} />
+              ) : (
+                /* Hidden avatar for non-members */
+                <div
+                  className="h-7 w-7 rounded-full flex-shrink-0 flex items-center justify-center"
+                  style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  <UserX className="h-3.5 w-3.5" style={{ color: "#4A4A4A" }} />
+                </div>
+              )}
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                  <span className="text-xs font-medium" style={{ color: "#F5F0EB" }}>{c.profiles?.display_name}</span>
+                  {isMember ? (
+                    <span className="text-xs font-medium" style={{ color: "#F5F0EB" }}>
+                      {c.profiles?.display_name}
+                    </span>
+                  ) : (
+                    /* Name is hidden for non-members */
+                    <span
+                      className="text-xs font-mono italic"
+                      style={{ color: "#4A4A4A" }}
+                      title="sign in to see member names"
+                    >
+                      builder •••
+                    </span>
+                  )}
                   <span className="text-[10px] font-mono" style={{ color: "#8A8480" }}>{timeAgo(c.created_at)}</span>
                 </div>
                 <p className="text-sm" style={{ color: "#F5F0EB" }}>{c.content}</p>
               </div>
             </div>
           ))}
-          {user && profile?.is_approved && (
+
+          {/* Comment input: members only */}
+          {isMember ? (
             <div className="flex gap-2 mt-3">
               <input
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitComment()}
-                placeholder="add a comment"
+                placeholder="add a comment…"
                 maxLength={1000}
                 className="flex-1 px-3 py-2 text-sm focus:outline-none"
                 style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
               />
               <Button size="sm" onClick={submitComment}>send</Button>
+            </div>
+          ) : (
+            <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              <Link
+                to="/login"
+                className="text-xs font-mono"
+                style={{ color: "#E8734A" }}
+              >
+                join builders house to comment →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Lightbox ── */}
+      {lightboxIdx !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.9)" }}
+          onClick={() => setLightboxIdx(null)}
+        >
+          <button
+            className="absolute top-4 right-4 h-9 w-9 flex items-center justify-center rounded-full"
+            style={{ background: "rgba(255,255,255,0.1)" }}
+            onClick={() => setLightboxIdx(null)}
+          >
+            ✕
+          </button>
+          {allImages.length > 1 && lightboxIdx > 0 && (
+            <button
+              className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
+              style={{ background: "rgba(255,255,255,0.1)" }}
+              onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! - 1 + allImages.length) % allImages.length); }}
+            >
+              ‹
+            </button>
+          )}
+          <img
+            src={allImages[lightboxIdx]}
+            alt=""
+            className="max-w-full max-h-[90vh] object-contain"
+            style={{ borderRadius: 12 }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          {allImages.length > 1 && lightboxIdx < allImages.length - 1 && (
+            <button
+              className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
+              style={{ background: "rgba(255,255,255,0.1)" }}
+              onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! + 1) % allImages.length); }}
+            >
+              ›
+            </button>
+          )}
+          {allImages.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+              {allImages.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => { e.stopPropagation(); setLightboxIdx(i); }}
+                  className="h-1.5 rounded-full transition-all"
+                  style={{ width: i === lightboxIdx ? 20 : 6, background: i === lightboxIdx ? "#E8734A" : "rgba(255,255,255,0.3)" }}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -369,10 +512,11 @@ export const PostCard = ({
   );
 };
 
+// ─────────────────────────────────────────────────────────────
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
+  if (m < 1)  return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
