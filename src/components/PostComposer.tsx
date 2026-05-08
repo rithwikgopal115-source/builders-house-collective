@@ -150,11 +150,11 @@ export const PostComposer = ({
     if (!isProjectChannel) { setProjects([]); return; }
     supabase
       .from("channel_projects")
-      .select("id, slot_number, name")
+      .select("id, slot_number, name, project_type")
       .eq("is_active", true)
       .eq("is_hidden", false)
       .order("slot_number")
-      .then(({ data }) => setProjects(data ?? []));
+      .then(({ data }) => setProjects((data ?? []).filter((p: any) => p.project_type !== "skill")));
   }, [isProjectChannel, channelId]);
 
   // ── YouTube preview ────────────────────────────────────────
