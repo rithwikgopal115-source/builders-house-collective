@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { PostCard, FeedPost } from "@/components/PostCard";
 import { FloatingActions } from "@/components/FloatingActions";
+import { PostComposer } from "@/components/PostComposer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -174,41 +175,6 @@ const AddProjectTile = ({onClick,nextSlot,style}:{onClick:()=>void;nextSlot:numb
   );
 };
 
-// ── Inline Edit Post Dialog ───────────────────────────────────
-const EditPostDialog = ({post,open,onOpenChange,onSaved}:{post:FeedPost|null;open:boolean;onOpenChange:(o:boolean)=>void;onSaved:()=>void}) => {
-  const [title,setTitle]=useState('');
-  const [content,setContent]=useState('');
-  const [busy,setBusy]=useState(false);
-  useEffect(()=>{if(post){setTitle(post.title??'');setContent(post.content??'');}},[post]);
-  const save=async()=>{
-    if(!post)return;
-    setBusy(true);
-    const {error}=await supabase.from('posts').update({title:title.trim()||null,content:content.trim()||null}).eq('id',post.id);
-    setBusy(false);
-    if(error){toast.error(error.message);return;}
-    toast.success('post updated');onOpenChange(false);onSaved();
-  };
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-0 max-w-lg" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:16}}>
-        <DialogHeader><DialogTitle className="font-medium" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>edit post</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="title (optional)" maxLength={200}
-            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
-          <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="content" rows={5} maxLength={5000}
-            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-            style={{background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',color:'#F5F0EB',borderRadius:8}}/>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={()=>onOpenChange(false)} style={{color:'#A09890'}}>cancel</Button>
-            <Button onClick={save} disabled={busy} className="px-6">{busy?'saving…':'save changes'}</Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
 // ── Post Feed (with edit/delete) ──────────────────────────────
 const PostFeed = ({channelId,projectId}:{channelId:string;projectId:string|null|'all'}) => {
   const {user,isAdmin} = useAuth();
@@ -261,7 +227,7 @@ const PostFeed = ({channelId,projectId}:{channelId:string;projectId:string|null|
           </div>
         ))}
       </div>
-      <EditPostDialog post={editingPost} open={!!editingPost} onOpenChange={o=>{if(!o)setEditingPost(null);}} onSaved={()=>{setEditingPost(null);load();}}/>
+      <PostComposer open={!!editingPost} onOpenChange={o=>{if(!o)setEditingPost(null);}} editPost={editingPost} onCreated={()=>{setEditingPost(null);load();}}/>
     </>
   );
 };
