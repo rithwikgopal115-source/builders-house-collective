@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +27,18 @@ type PostType = "text" | "link" | "video" | "doc" | "pdf" | "template";
 // Channels that support project tagging
 const PROJECT_CHANNEL_SLUGS = ["resources", "ideas", "wins"];
 
+// Post passed in for edit mode
+export interface EditablePost {
+  id: string;
+  title?: string | null;
+  content?: string | null;
+  type?: string | null;
+  url?: string | null;
+  image_urls?: string[] | null;
+  visibility?: string | null;
+  is_resource?: boolean | null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -34,6 +46,8 @@ interface Props {
   defaultIsResource?: boolean;
   defaultProjectId?: string | null;
   onCreated?: () => void;
+  /** Pass to open in edit mode — pre-fills all fields, submit calls UPDATE */
+  editPost?: EditablePost | null;
 }
 
 const TYPES: { v: PostType; i: any; l: string }[] = [
@@ -69,9 +83,12 @@ export const PostComposer = ({
   defaultIsResource,
   defaultProjectId,
   onCreated,
+  editPost,
 }: Props) => {
   const { user, profile, isAdmin } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef  = useRef<HTMLTextAreaElement>(null);
+  const isEditMode   = !!editPost;
 
   const [channels,     setChannels]     = useState<Channel[]>([]);
   const [channelId,    setChannelId]    = useState<string>(defaultChannelId ?? "");
@@ -104,6 +121,28 @@ export const PostComposer = ({
   useEffect(() => { setIsResource(!!defaultIsResource); }, [defaultIsResource, open]);
   useEffect(() => { if (defaultChannelId) setChannelId(defaultChannelId); }, [defaultChannelId, open]);
   useEffect(() => { setProjectId(defaultProjectId ?? null); }, [defaultProjectId, open]);
+
+  // ── Pre-fill when in edit mode ─────────────────────────────
+  useEffect(() => {
+    if (!editPost || !open) return;
+    setTitle(editPost.title ?? "");
+    setContent(editPost.content ?? "");
+    setType((editPost.type as PostType) ?? "text");
+    setUrl((editPost.url ?? ""));
+    setImageUrls(Array.isArray(editPost.image_urls) ? editPost.image_urls : []);
+    setVisibility((editPost.visibility as any) ?? "community");
+    setIsResource(!!editPost.is_resource);
+  }, [editPost, open]);
+
+  // ── Auto-resize textarea ───────────────────────────────────
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 480) + "px";
+  }, []);
+
+  useEffect(() => { autoResize(); }, [content, autoResize]);
 
   // Load active projects whenever a project channel is selected
   useEffect(() => {
@@ -179,14 +218,35 @@ export const PostComposer = ({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // ── Submit ─────────────────────────────────────────────────
+  // ── Submit (create or update) ──────────────────────────────
   const submit = async () => {
     if (!user || !profile?.is_approved) { toast.error("only approved members can post"); return; }
     if (!content.trim() && !title.trim() && !url.trim() && !imageUrls.length) {
       toast.error("write something or add an image"); return;
     }
-    if (!channelId) { toast.error("pick a channel"); return; }
     setBusy(true);
+
+    // ── EDIT MODE ──────────────────────────────────────────────
+    if (isEditMode && editPost) {
+      const { error } = await supabase.from("posts").update({
+        title:       title.trim() || null,
+        content:     content.trim() || null,
+        type:        dbType(type),
+        url:         url.trim() || null,
+        image_urls:  imageUrls.length ? imageUrls : [],
+        visibility,
+        is_resource: isResource,
+      }).eq("id", editPost.id);
+      setBusy(false);
+      if (error) { toast.error(error.message); return; }
+      toast.success("post updated");
+      reset();
+      onOpenChange(false);
+      onCreated?.();
+      return;
+    }
+
+    if (!channelId) { toast.error("pick a channel"); setBusy(false); return; }
 
     const isMemberRequestingPublic = visibility === "public" && !isAdmin;
     const insertVisibility = isMemberRequestingPublic ? "community" : visibility;
@@ -259,7 +319,7 @@ export const PostComposer = ({
       >
         <DialogHeader>
           <DialogTitle className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
-            new post
+            {isEditMode ? "edit post" : "new post"}
           </DialogTitle>
         </DialogHeader>
 
@@ -289,13 +349,14 @@ export const PostComposer = ({
 
           {/* ── Body ── */}
           <textarea
+            ref={textareaRef}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => { setContent(e.target.value); autoResize(); }}
+            onFocus={autoResize}
             placeholder="what's on your mind?"
-            rows={5}
             maxLength={5000}
             className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8, minHeight: 120, maxHeight: 480, overflowY: "auto" }}
           />
 
           {/* ── URL (for non-text types) ── */}
@@ -375,8 +436,8 @@ export const PostComposer = ({
             </label>
           </div>
 
-          {/* ── Project picker (resources / ideas / wins only) ── */}
-          {isProjectChannel && (
+          {/* ── Project picker (resources / ideas / wins only, not in edit mode) ── */}
+          {isProjectChannel && !isEditMode && (
             <div>
               <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>
                 project
@@ -433,22 +494,24 @@ export const PostComposer = ({
             </div>
           </div>
 
-          {/* ── Channel ── */}
-          <div>
-            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>channel</p>
-            <div className="flex flex-wrap gap-1.5">
-              {channels.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setChannelId(c.id)}
-                  className="flex items-center gap-1.5 font-mono"
-                  style={PillStyle(channelId === c.id)}
-                >
-                  <span>{CHANNEL_EMOJI[c.slug] ?? "•"}</span> {c.name.toLowerCase()}
-                </button>
-              ))}
+          {/* ── Channel (hidden in edit mode) ── */}
+          {!isEditMode && (
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>channel</p>
+              <div className="flex flex-wrap gap-1.5">
+                {channels.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setChannelId(c.id)}
+                    className="flex items-center gap-1.5 font-mono"
+                    style={PillStyle(channelId === c.id)}
+                  >
+                    <span>{CHANNEL_EMOJI[c.slug] ?? "•"}</span> {c.name.toLowerCase()}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* ── Resource toggle ── */}
           <label className="flex items-center gap-2 text-xs font-mono cursor-pointer" style={{ color: "#8A8480" }}>
@@ -464,7 +527,7 @@ export const PostComposer = ({
 
           <div className="flex justify-end pt-2">
             <Button onClick={submit} disabled={busy || uploading} className="px-8">
-              {busy ? "posting…" : "post it"}
+              {busy ? (isEditMode ? "saving…" : "posting…") : (isEditMode ? "save changes" : "post it")}
             </Button>
           </div>
 
