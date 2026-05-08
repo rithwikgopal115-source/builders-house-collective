@@ -727,23 +727,19 @@ const ExpertDirectoryView = ({onBack}:{onBack:()=>void}) => {
 // NOTE: no channel_id filter — channel_projects is global
 const SkillsView = ({channel,isAdmin,onSelectSkill,onBack}:{channel:Channel;isAdmin:boolean;onSelectSkill:(p:ChannelProject)=>void;onBack:()=>void}) => {
   const [skills,setSkills]=useState<ChannelProject[]>([]);
-  const [allUsedSlots,setAllUsedSlots]=useState<number[]>([]);
   const [showAdd,setShowAdd]=useState(false);
   const [editSkill,setEditSkill]=useState<ChannelProject|null>(null);
 
   const load=useCallback(async()=>{
-    const [skillsQ,allQ]=await Promise.all([
-      isAdmin
-        ?supabase.from('channel_projects').select('*').eq('is_active',true).eq('project_type','skill').order('slot_number')
-        :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).eq('project_type','skill').order('slot_number'),
-      supabase.from('channel_projects').select('slot_number').eq('is_active',true),
-    ]);
-    setSkills(skillsQ.data??[]);
-    setAllUsedSlots((allQ.data??[]).map((p:any)=>p.slot_number));
+    const q=isAdmin
+      ?supabase.from('channel_projects').select('*').eq('is_active',true).eq('project_type','skill').order('slot_number')
+      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).eq('project_type','skill').order('slot_number');
+    const {data}=await q;setSkills(data??[]);
   },[isAdmin]);
   useEffect(()=>{load();},[load]);
 
-  const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!allUsedSlots.includes(n))??1;
+  const used=skills.map(p=>p.slot_number);
+  const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
   const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
   const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
 
@@ -800,7 +796,6 @@ const AllProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{
   channel:Channel;isAdmin:boolean;onSelectProject:(p:ChannelProject)=>void;onBack:()=>void;
 }) => {
   const [projects,setProjects]=useState<ChannelProject[]>([]);
-  const [allUsedSlots,setAllUsedSlots]=useState<number[]>([]);
   const [showAdd,setShowAdd]=useState(false);
   const [editProject,setEditProject]=useState<ChannelProject|null>(null);
 
@@ -810,7 +805,6 @@ const AllProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{
       :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).order('slot_number');
     const {data}=await q;
     setProjects((data??[]).filter((p:ChannelProject)=>p.project_type!=='skill'));
-    setAllUsedSlots((data??[]).map((p:any)=>p.slot_number));
   },[isAdmin]);
   useEffect(()=>{load();},[load]);
   useEffect(()=>{
@@ -818,7 +812,8 @@ const AllProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{
     return ()=>{supabase.removeChannel(ch);};
   },[load]);
 
-  const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!allUsedSlots.includes(n))??1;
+  const used=projects.map(p=>p.slot_number);
+  const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
   const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
   const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
 
