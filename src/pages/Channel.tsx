@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ProjectChannelPage } from "@/components/ProjectChannelPage"; // ← NEW
+import { PostComposer } from "@/components/PostComposer";
 import {
   Star, Zap, Lightbulb, Music, Briefcase, Trophy,
   Send, ArrowLeft, Pencil, Trash2,
@@ -282,11 +283,11 @@ const ChannelPage = () => {
         onCreated={load}
       />
 
-      <EditPostComposer
-        post={editingPost}
+      <PostComposer
         open={!!editingPost}
         onOpenChange={(o) => { if (!o) setEditingPost(null); }}
-        onSaved={() => { setEditingPost(null); load(); }}
+        editPost={editingPost}
+        onCreated={() => { setEditingPost(null); load(); }}
       />
     </AppLayout>
   );
