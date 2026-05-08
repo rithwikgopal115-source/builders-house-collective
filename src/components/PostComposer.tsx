@@ -20,14 +20,19 @@ import {
 } from "lucide-react";
 
 interface Channel { id: string; slug: string; name: string; }
+interface ChannelProject { id: string; slot_number: number; name: string; }
 
 type PostType = "text" | "link" | "video" | "doc" | "pdf" | "template";
+
+// Channels that support project tagging
+const PROJECT_CHANNEL_SLUGS = ["resources", "ideas", "wins"];
 
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   defaultChannelId?: string;
   defaultIsResource?: boolean;
+  defaultProjectId?: string | null;
   onCreated?: () => void;
 }
 
@@ -62,24 +67,31 @@ export const PostComposer = ({
   onOpenChange,
   defaultChannelId,
   defaultIsResource,
+  defaultProjectId,
   onCreated,
 }: Props) => {
   const { user, profile, isAdmin } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [channels,    setChannels]    = useState<Channel[]>([]);
-  const [channelId,   setChannelId]   = useState<string>(defaultChannelId ?? "");
-  const [title,       setTitle]       = useState("");
-  const [content,     setContent]     = useState("");
-  const [type,        setType]        = useState<PostType>("text");
-  const [url,         setUrl]         = useState("");
-  const [imageUrls,   setImageUrls]   = useState<string[]>([]);   // ← multiple images
-  const [uploading,   setUploading]   = useState(false);
-  const [uploadingIdx,setUploadingIdx]= useState<number | null>(null);
-  const [visibility,  setVisibility]  = useState<"community" | "public" | "private">("community");
-  const [isResource,  setIsResource]  = useState(!!defaultIsResource);
-  const [busy,        setBusy]        = useState(false);
-  const [ytPreview,   setYtPreview]   = useState<{ thumb: string; title: string } | null>(null);
+  const [channels,     setChannels]     = useState<Channel[]>([]);
+  const [channelId,    setChannelId]    = useState<string>(defaultChannelId ?? "");
+  const [projects,     setProjects]     = useState<ChannelProject[]>([]);
+  const [projectId,    setProjectId]    = useState<string | null>(defaultProjectId ?? null);
+  const [title,        setTitle]        = useState("");
+  const [content,      setContent]      = useState("");
+  const [type,         setType]         = useState<PostType>("text");
+  const [url,          setUrl]          = useState("");
+  const [imageUrls,    setImageUrls]    = useState<string[]>([]);
+  const [uploading,    setUploading]    = useState(false);
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const [visibility,   setVisibility]   = useState<"community" | "public" | "private">("community");
+  const [isResource,   setIsResource]   = useState(!!defaultIsResource);
+  const [busy,         setBusy]         = useState(false);
+  const [ytPreview,    setYtPreview]    = useState<{ thumb: string; title: string } | null>(null);
+
+  // Derived: is current channel a project channel?
+  const selectedChannel = channels.find((c) => c.id === channelId);
+  const isProjectChannel = selectedChannel ? PROJECT_CHANNEL_SLUGS.includes(selectedChannel.slug) : false;
 
   // ── Load channels ──────────────────────────────────────────
   useEffect(() => {
@@ -91,6 +103,19 @@ export const PostComposer = ({
 
   useEffect(() => { setIsResource(!!defaultIsResource); }, [defaultIsResource, open]);
   useEffect(() => { if (defaultChannelId) setChannelId(defaultChannelId); }, [defaultChannelId, open]);
+  useEffect(() => { setProjectId(defaultProjectId ?? null); }, [defaultProjectId, open]);
+
+  // Load active projects whenever a project channel is selected
+  useEffect(() => {
+    if (!isProjectChannel) { setProjects([]); return; }
+    supabase
+      .from("channel_projects")
+      .select("id, slot_number, name")
+      .eq("is_active", true)
+      .eq("is_hidden", false)
+      .order("slot_number")
+      .then(({ data }) => setProjects(data ?? []));
+  }, [isProjectChannel, channelId]);
 
   // ── YouTube preview ────────────────────────────────────────
   useEffect(() => {
@@ -150,6 +175,7 @@ export const PostComposer = ({
     setTitle(""); setContent(""); setUrl(""); setType("text");
     setVisibility("community"); setIsResource(!!defaultIsResource);
     setImageUrls([]); setYtPreview(null);
+    setProjectId(defaultProjectId ?? null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -171,8 +197,9 @@ export const PostComposer = ({
       title:       title.trim() || null,
       content:     content.trim(),
       type:        dbType(type),
-      url:         url.trim() || null,          // only for links/videos/docs
+      url:         url.trim() || null,
       image_urls:  imageUrls.length ? imageUrls : [],
+      project_id:  isProjectChannel ? (projectId ?? null) : null,
       visibility:  insertVisibility,
       is_resource: isResource,
     }).select("id").maybeSingle();
@@ -195,6 +222,26 @@ export const PostComposer = ({
       toast.success("posted · public request sent to admin");
     } else {
       toast.success("posted");
+    }
+
+    // ── Notify all members about the new post ──────────────
+    if (created) {
+      const channelName = selectedChannel?.name ?? "a channel";
+      const { data: members } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("is_approved", true)
+        .neq("id", user.id);
+      if (members?.length) {
+        await supabase.from("notifications").insert(
+          members.map((m) => ({
+            recipient_id: m.id,
+            type: "new_post",
+            related_id: created.id,
+            content: `${profile.display_name} posted in ${channelName}`,
+          }))
+        );
+      }
     }
 
     setBusy(false);
@@ -327,6 +374,46 @@ export const PostComposer = ({
               )}
             </label>
           </div>
+
+          {/* ── Project picker (resources / ideas / wins only) ── */}
+          {isProjectChannel && (
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>
+                project
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {/* General option */}
+                <button
+                  onClick={() => setProjectId(null)}
+                  className="flex items-center gap-1.5 font-mono"
+                  style={PillStyle(projectId === null)}
+                >
+                  General
+                </button>
+                {projects.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setProjectId(p.id)}
+                    className="flex items-center gap-1.5 font-mono"
+                    style={PillStyle(projectId === p.id)}
+                  >
+                    <span
+                      className="text-[10px] font-mono opacity-60 mr-0.5"
+                      style={{ letterSpacing: '-0.02em' }}
+                    >
+                      {p.slot_number}
+                    </span>
+                    {p.name}
+                  </button>
+                ))}
+                {projects.length === 0 && (
+                  <span className="text-xs font-mono" style={{ color: "#6A6460" }}>
+                    no projects yet — admin can add them
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Visibility ── */}
           <div>
