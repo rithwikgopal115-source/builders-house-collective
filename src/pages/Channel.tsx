@@ -9,7 +9,9 @@ import { FloatingActions } from "@/components/FloatingActions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ProjectChannelPage } from "@/components/ProjectChannelPage"; // ← NEW
+import { ProjectChannelPage } from "@/components/ProjectChannelPage";
+import { GeneralChannelPage } from "@/components/GeneralChannelPage";
+import { IdeasChannelPage } from "@/components/IdeasChannelPage";
 import { PostComposer } from "@/components/PostComposer";
 import {
   Star, Zap, Lightbulb, Music, Briefcase, Trophy,
@@ -18,8 +20,10 @@ import {
   Users, Globe, Lock,
 } from "lucide-react";
 
-// ← NEW: these three channels use the tile-grid project architecture
-const PROJECT_CHANNEL_SLUGS = ["resources", "ideas", "wins"];
+// Channel routing
+const PROJECT_CHANNEL_SLUGS  = ["wins"];         // tile-grid (ProjectChannelPage)
+const GENERAL_HUB_SLUGS      = ["resources"];    // hub page (GeneralChannelPage)
+const IDEAS_CHANNEL_SLUGS    = ["ideas"];         // ideas tabs (IdeasChannelPage)
 
 interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; }
 
@@ -78,7 +82,7 @@ const ChannelPage = () => {
     document.title = `${ch.name.toLowerCase()} — builders house`;
 
     // For project channels we don't need to load posts here (ProjectChannelPage handles it)
-    if (PROJECT_CHANNEL_SLUGS.includes(ch.slug)) return;
+    if ([...PROJECT_CHANNEL_SLUGS, ...GENERAL_HUB_SLUGS, ...IDEAS_CHANNEL_SLUGS].includes(ch.slug)) return;
 
     const { data: ps } = await supabase
       .from("posts")
@@ -94,7 +98,7 @@ const ChannelPage = () => {
 
   useEffect(() => {
     if (!channel) return;
-    if (PROJECT_CHANNEL_SLUGS.includes(channel.slug)) return; // ProjectChannelPage handles its own realtime
+    if ([...PROJECT_CHANNEL_SLUGS, ...GENERAL_HUB_SLUGS, ...IDEAS_CHANNEL_SLUGS].includes(channel.slug)) return; // specialised pages handle their own realtime
     const ch = supabase
       .channel(`posts:${channel.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "posts", filter: `channel_id=eq.${channel.id}` }, () => load())
@@ -165,32 +169,57 @@ const ChannelPage = () => {
     );
   }
 
-  // ── NEW: Project channels → tile grid architecture ─────────────────────────
+  // ── Hub page (resources) ──────────────────────────────────────────────────
+  const ChannelPageHeader = () => (
+    <header className="mb-6">
+      <Link to="/home" className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 transition-colors hover:text-primary" style={{ color: "#A09890" }}>
+        <ArrowLeft className="h-3.5 w-3.5" />home
+      </Link>
+      <div className="flex items-center gap-4">
+        <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
+          <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-medium tracking-tight truncate" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>{channel.name.toLowerCase()}</h1>
+          {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#A09890" }}>{channel.description}</p>}
+        </div>
+      </div>
+    </header>
+  );
+
+  if (GENERAL_HUB_SLUGS.includes(channel.slug)) {
+    return (
+      <AppLayout>
+        <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+          <ChannelPageHeader/>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+            <GeneralChannelPage channel={channel} />
+            <ChannelChat channelId={channel.id} channelName={channel.name} />
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (IDEAS_CHANNEL_SLUGS.includes(channel.slug)) {
+    return (
+      <AppLayout>
+        <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+          <ChannelPageHeader/>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+            <IdeasChannelPage channel={channel} />
+            <ChannelChat channelId={channel.id} channelName={channel.name} />
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   if (PROJECT_CHANNEL_SLUGS.includes(channel.slug)) {
     return (
       <AppLayout>
         <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
-          <header className="mb-6">
-            <Link
-              to="/home"
-              className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 transition-colors hover:text-primary"
-              style={{ color: "#A09890" }}
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              home
-            </Link>
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
-                <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-2xl md:text-3xl font-medium tracking-tight truncate" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
-                  {channel.name.toLowerCase()}
-                </h1>
-                {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#A09890" }}>{channel.description}</p>}
-              </div>
-            </div>
-          </header>
+          <ChannelPageHeader/>
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
             <ProjectChannelPage channel={channel} />
             <ChannelChat channelId={channel.id} channelName={channel.name} />
