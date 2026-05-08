@@ -1,5 +1,10 @@
+/**
+ * FloatingActions.tsx
+ * Coral floating + button — now supports defaultProjectId for project-channel views.
+ * Drop this into src/components/FloatingActions.tsx
+ */
 import { useState } from "react";
-import { Plus, Bookmark } from "lucide-react";
+import { Bookmark } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { PostComposer } from "./PostComposer";
 import { QuickSaveSheet } from "./QuickSaveSheet";
@@ -7,14 +12,19 @@ import { QuickSaveSheet } from "./QuickSaveSheet";
 interface Props {
   defaultChannelId?: string;
   defaultIsResource?: boolean;
+  defaultProjectId?: string | null;   // ← new: pre-selects project in composer
   onCreated?: () => void;
 }
 
-/** Coral floating + button (members) + admin-only quick-save bookmark button. */
-export const FloatingActions = ({ defaultChannelId, defaultIsResource, onCreated }: Props) => {
+export const FloatingActions = ({
+  defaultChannelId,
+  defaultIsResource,
+  defaultProjectId,
+  onCreated,
+}: Props) => {
   const { profile, isAdmin } = useAuth();
   const [composerOpen, setComposerOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickOpen,    setQuickOpen]    = useState(false);
 
   if (!profile?.is_approved) return null;
 
@@ -36,7 +46,11 @@ export const FloatingActions = ({ defaultChannelId, defaultIsResource, onCreated
           className="h-14 w-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-lg"
           style={{ background: "#E8734A", color: "#0D0D0D" }}
         >
-          <Plus className="h-6 w-6" strokeWidth={2.5} />
+          {/* Plus icon inline to avoid import */}
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
         </button>
       </div>
 
@@ -45,6 +59,7 @@ export const FloatingActions = ({ defaultChannelId, defaultIsResource, onCreated
         onOpenChange={setComposerOpen}
         defaultChannelId={defaultChannelId}
         defaultIsResource={defaultIsResource}
+        defaultProjectId={defaultProjectId}
         onCreated={onCreated}
       />
       <QuickSaveSheet open={quickOpen} onOpenChange={setQuickOpen} />
