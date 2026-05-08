@@ -242,11 +242,11 @@ const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,defaultType='
         project_type:projType,is_locked:isLocked,
       }).eq('id',existing.id));
     } else {
-      // No channel_id — channel_projects is global
+      // No channel_id, no created_by — channel_projects is global
       ({error}=await supabase.from('channel_projects').insert({
         slot_number:nextSlot,name:name.trim(),description:desc.trim()||null,
         gradient_idx:gradIdx,project_type:projType,is_locked:isLocked,
-        is_active:true,is_hidden:false,created_by:user?.id,
+        is_active:true,is_hidden:false,
       }));
     }
     setBusy(false);
@@ -707,15 +707,60 @@ const InfoSkillsView = ({channel,isAdmin,onInfoFlow,onSkillsEnter,onBack,onSelec
   </div>
 );
 
-// ─── Hub View ─────────────────────────────────────────────────
-// Layout: [Info & Skills tile] then heading + all project tiles
-// NOTE: channel_projects has NO channel_id — load all active projects
-const HubView = ({channel,isAdmin,onInfoSkills,onSelectProject}:{
-  channel:Channel;isAdmin:boolean;onInfoSkills:()=>void;onSelectProject:(p:ChannelProject)=>void;
+// ─── All Projects View ────────────────────────────────────────
+const AllProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{
+  channel:Channel;isAdmin:boolean;onSelectProject:(p:ChannelProject)=>void;onBack:()=>void;
 }) => {
   const [projects,setProjects]=useState<ChannelProject[]>([]);
-  const [editProject,setEditProject]=useState<ChannelProject|null>(null);
   const [showAdd,setShowAdd]=useState(false);
+  const [editProject,setEditProject]=useState<ChannelProject|null>(null);
+
+  const load=useCallback(async()=>{
+    const q=isAdmin
+      ?supabase.from('channel_projects').select('*').eq('is_active',true).order('slot_number')
+      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).order('slot_number');
+    const {data}=await q;
+    setProjects((data??[]).filter((p:ChannelProject)=>p.project_type!=='skill'));
+  },[isAdmin]);
+  useEffect(()=>{load();},[load]);
+  useEffect(()=>{
+    const ch=supabase.channel('allpv_cp_rt').on('postgres_changes',{event:'*',schema:'public',table:'channel_projects'},load).subscribe();
+    return ()=>{supabase.removeChannel(ch);};
+  },[load]);
+
+  const used=projects.map(p=>p.slot_number);
+  const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
+  const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
+  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
+
+  return (
+    <div>
+      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-5 hover:text-primary" style={{color:'#A09890'}}>
+        <ArrowLeft className="h-3.5 w-3.5"/>back
+      </button>
+      <h2 className="text-lg font-bold mb-4" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>projects we are working on</h2>
+      <style>{`.apvg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}@media(max-width:640px){.apvg{grid-template-columns:repeat(2,1fr)}}`}</style>
+      <div className="apvg">
+        {projects.map(p=>(
+          p.is_locked
+            ?<LockedTile key={p.id} title={p.name}/>
+            :<ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>onSelectProject(p)} onEdit={()=>setEditProject(p)} onHide={()=>hide(p)} onDelete={()=>del(p)}/>
+        ))}
+        {isAdmin&&<AddProjectTile onClick={()=>setShowAdd(true)} nextSlot={nextSlot}/>}
+      </div>
+      <ProjectModal open={showAdd} onOpenChange={setShowAdd} onSaved={()=>{setShowAdd(false);load();}} nextSlot={nextSlot} defaultType="project"/>
+      <ProjectModal open={!!editProject} onOpenChange={o=>{if(!o)setEditProject(null);}} onSaved={()=>{setEditProject(null);load();}} existing={editProject} nextSlot={nextSlot}/>
+    </div>
+  );
+};
+
+// ─── Hub View ─────────────────────────────────────────────────
+// Layout: [Info & Skills tile] + [All Projects tile]
+// NOTE: channel_projects has NO channel_id — load all active projects
+const HubView = ({isAdmin,onInfoSkills,onAllProjects}:{
+  isAdmin:boolean;onInfoSkills:()=>void;onAllProjects:()=>void;
+}) => {
+  const [projects,setProjects]=useState<ChannelProject[]>([]);
 
   const load=useCallback(async()=>{
     // Load ALL active projects (no project_type='skill' ones) — no channel_id filter
@@ -754,19 +799,8 @@ const HubView = ({channel,isAdmin,onInfoSkills,onSelectProject}:{
       <div>
         <p className="text-[10px] font-mono uppercase tracking-widest mb-1" style={{color:'rgba(255,255,255,0.2)'}}>some valuable stuff from</p>
         <h3 className="text-base font-bold mb-4" style={{color:'#F5F0EB',letterSpacing:'-0.01em'}}>projects we are working on</h3>
-        <style>{`.hubpg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}@media(max-width:640px){.hubpg{grid-template-columns:repeat(2,1fr)}}`}</style>
-        <div className="hubpg">
-          {projects.map(p=>(
-            p.is_locked
-              ?<LockedTile key={p.id} title={p.name}/>
-              :<ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>onSelectProject(p)} onEdit={()=>setEditProject(p)} onHide={()=>hide(p)} onDelete={()=>del(p)}/>
-          ))}
-          {isAdmin&&<AddProjectTile onClick={()=>setShowAdd(true)} nextSlot={nextSlot}/>}
-        </div>
+        <HubNavTile title="All Projects" subtitle={`${projects.length} project${projects.length!==1?'s':''} · click to explore`} gradIdx={21} onClick={onAllProjects} icon={Layers} minHeight={130}/>
       </div>
-
-      <ProjectModal open={showAdd} onOpenChange={setShowAdd} onSaved={()=>{setShowAdd(false);load();}} nextSlot={nextSlot} defaultType="project"/>
-      <ProjectModal open={!!editProject} onOpenChange={o=>{if(!o)setEditProject(null);}} onSaved={()=>{setEditProject(null);load();}} existing={editProject} nextSlot={nextSlot}/>
     </div>
   );
 };
@@ -774,7 +808,7 @@ const HubView = ({channel,isAdmin,onInfoSkills,onSelectProject}:{
 // ─── Main Export ──────────────────────────────────────────────
 export const GeneralChannelPage = ({channel}:{channel:Channel}) => {
   const {isAdmin}=useAuth();
-  type View='hub'|'info-skills'|'info-flow'|'expert'|'skills'|'project'|'skill-detail';
+  type View='hub'|'all-projects'|'info-skills'|'info-flow'|'expert'|'skills'|'project'|'skill-detail';
   const [history,setHistory]=useState<View[]>(['hub']);
   const [activeProject,setActiveProject]=useState<ChannelProject|null>(null);
   const view=history[history.length-1];
@@ -787,10 +821,11 @@ export const GeneralChannelPage = ({channel}:{channel:Channel}) => {
   if(view==='skills') return <SkillsView channel={channel} isAdmin={isAdmin} onSelectSkill={p=>{setActiveProject(p);push('skill-detail');}} onBack={pop}/>;
   if(view==='info-flow') return <InfoFlowView onExpertDir={()=>push('expert')} onBack={pop}/>;
   if(view==='info-skills') return <InfoSkillsView channel={channel} isAdmin={isAdmin} onInfoFlow={()=>push('info-flow')} onSkillsEnter={()=>push('skills')} onBack={pop} onSelectSkill={p=>{setActiveProject(p);push('skill-detail');}}/>;
+  if(view==='all-projects') return <AllProjectsView channel={channel} isAdmin={isAdmin} onSelectProject={p=>{setActiveProject(p);push('project');}} onBack={pop}/>;
 
   return (
     <>
-      <HubView channel={channel} isAdmin={isAdmin} onInfoSkills={()=>push('info-skills')} onSelectProject={p=>{setActiveProject(p);push('project');}}/>
+      <HubView isAdmin={isAdmin} onInfoSkills={()=>push('info-skills')} onAllProjects={()=>push('all-projects')}/>
       <FloatingActions defaultChannelId={channel.id}/>
     </>
   );
