@@ -9,12 +9,16 @@ import { FloatingActions } from "@/components/FloatingActions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { ProjectChannelPage } from "@/components/ProjectChannelPage"; // ← NEW
 import {
   Star, Zap, Lightbulb, Music, Briefcase, Trophy,
   Send, ArrowLeft, Pencil, Trash2,
   FileText, Link as LinkIcon, Youtube, FileType, LayoutTemplate,
   Users, Globe, Lock,
 } from "lucide-react";
+
+// ← NEW: these three channels use the tile-grid project architecture
+const PROJECT_CHANNEL_SLUGS = ["resources", "ideas", "wins"];
 
 interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; }
 
@@ -72,6 +76,9 @@ const ChannelPage = () => {
     setChannel(ch);
     document.title = `${ch.name.toLowerCase()} — builders house`;
 
+    // For project channels we don't need to load posts here (ProjectChannelPage handles it)
+    if (PROJECT_CHANNEL_SLUGS.includes(ch.slug)) return;
+
     const { data: ps } = await supabase
       .from("posts")
       .select("id, channel_id, user_id, title, content, type, url, image_urls, visibility, created_at, is_pinned, is_resource, profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
@@ -86,6 +93,7 @@ const ChannelPage = () => {
 
   useEffect(() => {
     if (!channel) return;
+    if (PROJECT_CHANNEL_SLUGS.includes(channel.slug)) return; // ProjectChannelPage handles its own realtime
     const ch = supabase
       .channel(`posts:${channel.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "posts", filter: `channel_id=eq.${channel.id}` }, () => load())
@@ -156,6 +164,42 @@ const ChannelPage = () => {
     );
   }
 
+  // ── NEW: Project channels → tile grid architecture ─────────────────────────
+  if (PROJECT_CHANNEL_SLUGS.includes(channel.slug)) {
+    return (
+      <AppLayout>
+        <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+          <header className="mb-6">
+            <Link
+              to="/home"
+              className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 transition-colors hover:text-primary"
+              style={{ color: "#A09890" }}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              home
+            </Link>
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
+                <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl md:text-3xl font-medium tracking-tight truncate" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
+                  {channel.name.toLowerCase()}
+                </h1>
+                {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#A09890" }}>{channel.description}</p>}
+              </div>
+            </div>
+          </header>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+            <ProjectChannelPage channel={channel} />
+            <ChannelChat channelId={channel.id} channelName={channel.name} />
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ── All other channels: existing flat feed ─────────────────────────────────
   const visible = posts.filter((p) => tab === "resources" ? !!p.is_resource : true);
 
   return (
@@ -365,7 +409,6 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
                       {m.content}
                     </div>
                   )}
-
                   {canEdit && !isEditing && (
                     <div className={`absolute -top-6 ${mine ? "right-0" : "left-0"} flex gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity`}>
                       {mine && (
@@ -408,15 +451,9 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EditPostComposer = ({
-  post,
-  open,
-  onOpenChange,
-  onSaved,
+  post, open, onOpenChange, onSaved,
 }: {
-  post: FeedPost | null;
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  onSaved: () => void;
+  post: FeedPost | null; open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void;
 }) => {
   const { isAdmin } = useAuth();
   const [title, setTitle]       = useState("");
@@ -440,17 +477,14 @@ const EditPostComposer = ({
   const save = async () => {
     if (!post) return;
     setBusy(true);
-    const { error } = await supabase
-      .from("posts")
-      .update({
-        title: title.trim() || null,
-        content: content.trim() || null,
-        type: dbType(type),
-        url: url.trim() || null,
-        visibility,
-        is_resource: isResource,
-      })
-      .eq("id", post.id);
+    const { error } = await supabase.from("posts").update({
+      title: title.trim() || null,
+      content: content.trim() || null,
+      type: dbType(type),
+      url: url.trim() || null,
+      visibility,
+      is_resource: isResource,
+    }).eq("id", post.id);
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success("post updated");
@@ -459,16 +493,11 @@ const EditPostComposer = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="border-0 max-w-xl max-h-[90vh] overflow-y-auto"
-        style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}
-      >
+      <DialogContent className="border-0 max-w-xl max-h-[90vh] overflow-y-auto" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
         <DialogHeader>
           <DialogTitle className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>edit post</DialogTitle>
         </DialogHeader>
-
         <div className="space-y-4">
-          {/* Type pills */}
           <div>
             <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#A09890" }}>type</p>
             <div className="flex flex-wrap gap-1.5">
@@ -479,59 +508,23 @@ const EditPostComposer = ({
               ))}
             </div>
           </div>
-
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="title (optional)"
-            maxLength={200}
-            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-          />
-
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="what's on your mind?"
-            rows={5}
-            maxLength={5000}
-            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-          />
-
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="title (optional)" maxLength={200} className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+          <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="what's on your mind?" rows={5} maxLength={5000} className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           {type !== "text" && (
-            <input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://"
-              className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono"
-              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-            />
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           )}
-
-          {/* Visibility pills */}
           <div>
             <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#A09890" }}>visibility</p>
             <div className="flex flex-wrap gap-1.5">
-              <button onClick={() => setVisibility("community")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "community")}>
-                <Users className="h-3 w-3" /> community
-              </button>
-              <button onClick={() => setVisibility("public")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "public")}>
-                <Globe className="h-3 w-3" /> public
-              </button>
-              {isAdmin && (
-                <button onClick={() => setVisibility("private")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "private")}>
-                  <Lock className="h-3 w-3" /> private
-                </button>
-              )}
+              <button onClick={() => setVisibility("community")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "community")}><Users className="h-3 w-3" /> community</button>
+              <button onClick={() => setVisibility("public")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "public")}><Globe className="h-3 w-3" /> public</button>
+              {isAdmin && <button onClick={() => setVisibility("private")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "private")}><Lock className="h-3 w-3" /> private</button>}
             </div>
           </div>
-
           <label className="flex items-center gap-2 text-xs font-mono cursor-pointer" style={{ color: "#A09890" }}>
             <input type="checkbox" checked={isResource} onChange={(e) => setIsResource(e.target.checked)} />
             save to resources tab (curated)
           </label>
-
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} style={{ color: "#A09890" }}>cancel</Button>
             <Button onClick={save} disabled={busy} className="px-8">{busy ? "saving…" : "save changes"}</Button>
