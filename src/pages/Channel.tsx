@@ -41,14 +41,14 @@ const ICONS: Record<string, { icon: any; color: string }> = {
   "wins":      { icon: Trophy,      color: "#EA580C" },
 };
 
-// Per-channel subtle gradient overlays — low saturation, dark
+// Per-channel vibrant gradient overlays
 const CHANNEL_GRADIENTS: Record<string, string> = {
-  "resources": "radial-gradient(ellipse at 85% 15%, rgba(232,115,74,0.09) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(232,115,74,0.05) 0%, transparent 50%)",
-  "ai-news":   "radial-gradient(ellipse at 85% 15%, rgba(29,106,229,0.10) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(29,106,229,0.04) 0%, transparent 50%)",
-  "ideas":     "radial-gradient(ellipse at 85% 15%, rgba(245,197,24,0.09) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(245,197,24,0.04) 0%, transparent 50%)",
-  "vibing":    "radial-gradient(ellipse at 85% 15%, rgba(124,58,237,0.10) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(124,58,237,0.04) 0%, transparent 50%)",
-  "hiring":    "radial-gradient(ellipse at 85% 15%, rgba(22,163,74,0.09) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(22,163,74,0.04) 0%, transparent 50%)",
-  "wins":      "radial-gradient(ellipse at 85% 15%, rgba(234,88,12,0.10) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(234,88,12,0.04) 0%, transparent 50%)",
+  "resources": "radial-gradient(ellipse at 80% 10%, rgba(232,115,74,0.22) 0%, transparent 50%), radial-gradient(ellipse at 10% 90%, rgba(232,115,74,0.12) 0%, transparent 45%), radial-gradient(ellipse at 50% 50%, rgba(180,70,30,0.06) 0%, transparent 70%)",
+  "ai-news":   "radial-gradient(ellipse at 80% 10%, rgba(29,106,229,0.24) 0%, transparent 50%), radial-gradient(ellipse at 10% 90%, rgba(29,106,229,0.10) 0%, transparent 45%), radial-gradient(ellipse at 50% 50%, rgba(10,60,180,0.07) 0%, transparent 70%)",
+  "ideas":     "radial-gradient(ellipse at 80% 10%, rgba(245,197,24,0.20) 0%, transparent 50%), radial-gradient(ellipse at 10% 90%, rgba(245,197,24,0.09) 0%, transparent 45%), radial-gradient(ellipse at 50% 50%, rgba(200,160,0,0.06) 0%, transparent 70%)",
+  "vibing":    "radial-gradient(ellipse at 80% 10%, rgba(124,58,237,0.24) 0%, transparent 50%), radial-gradient(ellipse at 10% 90%, rgba(124,58,237,0.11) 0%, transparent 45%), radial-gradient(ellipse at 50% 50%, rgba(80,20,200,0.07) 0%, transparent 70%)",
+  "hiring":    "radial-gradient(ellipse at 80% 10%, rgba(22,163,74,0.22) 0%, transparent 50%), radial-gradient(ellipse at 10% 90%, rgba(22,163,74,0.10) 0%, transparent 45%), radial-gradient(ellipse at 50% 50%, rgba(10,120,50,0.06) 0%, transparent 70%)",
+  "wins":      "radial-gradient(ellipse at 80% 10%, rgba(234,88,12,0.24) 0%, transparent 50%), radial-gradient(ellipse at 10% 90%, rgba(234,88,12,0.11) 0%, transparent 45%), radial-gradient(ellipse at 50% 50%, rgba(180,60,0,0.07) 0%, transparent 70%)",
 };
 
 const CHANNEL_ACCENT: Record<string, string> = {
@@ -94,6 +94,7 @@ const ChannelPage = () => {
   const [tab, setTab] = useState<"posts" | "resources">("posts");
   const [editingPost, setEditingPost] = useState<FeedPost | null>(null);
   const [channelIntroCollapsed, setChannelIntroCollapsed] = useState(false);
+  const [slideDir, setSlideDir] = useState<'right' | 'left'>('right');
   const touchStartX = useRef(0);
 
   const isApproved = !!profile?.is_approved;
@@ -142,8 +143,8 @@ const ChannelPage = () => {
   };
   const handleTouchEnd = (e: React.TouchEvent) => {
     const diff = e.changedTouches[0].clientX - touchStartX.current;
-    if (diff > 60 && prevSlug) navigate(`/channel/${prevSlug}`);
-    if (diff < -60 && nextSlug) navigate(`/channel/${nextSlug}`);
+    if (diff > 60 && prevSlug) { setSlideDir('right'); navigate(`/channel/${prevSlug}`); }
+    if (diff < -60 && nextSlug) { setSlideDir('left'); navigate(`/channel/${nextSlug}`); }
   };
 
   const requestPublic = async (post: FeedPost) => {
@@ -179,7 +180,7 @@ const ChannelPage = () => {
   const ChannelSwitcher = () => (
     <div className="flex items-center gap-1">
       <button
-        onClick={() => prevSlug && navigate(`/channel/${prevSlug}`)}
+        onClick={() => { if (prevSlug) { setSlideDir('right'); navigate(`/channel/${prevSlug}`); } }}
         disabled={!prevSlug}
         className="h-8 w-8 flex items-center justify-center rounded-lg transition-all hover:bg-white/10 disabled:opacity-20"
         style={{ color: accent, border: `1px solid ${accent}33` }}
@@ -188,7 +189,7 @@ const ChannelPage = () => {
         <ChevronLeft className="h-4 w-4" />
       </button>
       <button
-        onClick={() => nextSlug && navigate(`/channel/${nextSlug}`)}
+        onClick={() => { if (nextSlug) { setSlideDir('left'); navigate(`/channel/${nextSlug}`); } }}
         disabled={!nextSlug}
         className="h-8 w-8 flex items-center justify-center rounded-lg transition-all hover:bg-white/10 disabled:opacity-20"
         style={{ color: accent, border: `1px solid ${accent}33` }}
@@ -278,21 +279,39 @@ const ChannelPage = () => {
     </header>
   );
 
-  // Shared page wrapper with gradient overlay + swipe
+  // Shared page wrapper with gradient overlay + swipe + slide animation
   const PageWrapper = ({ children }: { children: React.ReactNode }) => (
     <div
       className="relative min-h-screen"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Gradient overlay per channel */}
+      {/* Gradient overlay per channel — transitions smoothly on slug change */}
       <div
         className="fixed inset-0 pointer-events-none"
-        style={{ background: channelGradient, zIndex: 0, transition: "background 0.6s ease" }}
+        style={{ background: channelGradient, zIndex: 0, transition: "background 0.5s ease" }}
       />
-      <div className="relative" style={{ zIndex: 1 }}>
+      {/* key={slug} forces remount → triggers slide-in animation on channel switch */}
+      <div
+        key={slug}
+        className="relative"
+        style={{
+          zIndex: 1,
+          animation: `channelSlideIn${slideDir === 'left' ? 'Left' : 'Right'} 0.28s cubic-bezier(0.22,1,0.36,1)`,
+        }}
+      >
         {children}
       </div>
+      <style>{`
+        @keyframes channelSlideInRight {
+          from { opacity: 0; transform: translateX(-32px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes channelSlideInLeft {
+          from { opacity: 0; transform: translateX(32px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
     </div>
   );
 
@@ -305,7 +324,7 @@ const ChannelPage = () => {
             <ChannelPageHeader />
             <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
               <GeneralChannelPage channel={channel} />
-              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} key={slug} />
             </div>
           </div>
         </PageWrapper>
@@ -321,7 +340,7 @@ const ChannelPage = () => {
             <ChannelPageHeader />
             <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
               <IdeasChannelPage channel={channel} />
-              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} key={slug} />
             </div>
           </div>
         </PageWrapper>
@@ -337,7 +356,7 @@ const ChannelPage = () => {
             <ChannelPageHeader />
             <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
               <ProjectChannelPage channel={channel} />
-              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} key={slug} />
             </div>
           </div>
         </PageWrapper>
@@ -396,6 +415,7 @@ const ChannelPage = () => {
           defaultChannelId={channel.id}
           defaultIsResource={tab === "resources"}
           onCreated={load}
+          accent={accent}
         />
 
         <PostComposer
@@ -426,7 +446,7 @@ const ChannelChat = ({ channelId, channelName, accent }: { channelId: string; ch
   const [messages, setMessages] = useState<any[]>([]);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editingMsgContent, setEditingMsgContent] = useState("");
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
   const ac = accent ?? "#E8734A";
 
@@ -452,7 +472,14 @@ const ChannelChat = ({ channelId, channelName, accent }: { channelId: string; ch
     return () => { supabase.removeChannel(ch); };
   }, [channelId, load]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  const prevLengthRef = useRef(0);
+  useEffect(() => {
+    // Only scroll to bottom when a NEW message arrives, not on initial load
+    if (messages.length > prevLengthRef.current && prevLengthRef.current !== 0) {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevLengthRef.current = messages.length;
+  }, [messages]);
 
   const send = async () => {
     if (!draft.trim() || !user || !profile?.is_approved) return;
