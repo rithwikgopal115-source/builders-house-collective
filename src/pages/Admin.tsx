@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { AvatarBlock } from "@/components/AvatarBlock";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MessageSquare, Zap, Send, ChevronDown, ChevronUp, Youtube, Globe, Lock, Eye, EyeOff, Shield, ShieldOff } from "lucide-react";
+import { MessageSquare, Zap, Send, ChevronDown, ChevronUp, Youtube, Globe, Lock, Eye, EyeOff, Shield, ShieldOff, Settings2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 // ─── Shared pill button ───────────────────────────────────────────────────────
@@ -53,8 +53,9 @@ const Admin = () => {
   const [projects, setProjects]   = useState<any[]>([]);
   const [filter, setFilter]       = useState<"all" | "pending" | "approved" | "rejected" | "yolo">("pending");
   const [credentialModal, setCredentialModal] = useState<{ email: string; password: string } | null>(null);
-  const [yoloMode, setYoloMode]   = useState(false);
-  const [dmRequest, setDmRequest] = useState<any>(null);
+  const [yoloMode, setYoloMode]           = useState(false);
+  const [dmRequest, setDmRequest]         = useState<any>(null);
+  const [permissionsMember, setPermissionsMember] = useState<any>(null);
 
   const loadAll = async () => {
     const [{ data: r }, { data: m }, { data: c }, { data: s }, { data: p }] = await Promise.all([
@@ -252,6 +253,14 @@ const Admin = () => {
                     {m.id !== user?.id && (
                       <>
                         <button
+                          onClick={() => setPermissionsMember(m)}
+                          className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
+                          style={{ border: "1px solid rgba(255,255,255,0.08)", color: "#6A6460" }}
+                          title="manage per-project permissions"
+                        >
+                          <Settings2 className="h-3 w-3" /> permissions
+                        </button>
+                        <button
                           onClick={() => toggleAdmin(m.id, m.is_admin)}
                           className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
                           style={{
@@ -298,6 +307,12 @@ const Admin = () => {
             ))}
           </TabsContent>
         </Tabs>
+
+        <MemberPermissionsDialog
+          member={permissionsMember}
+          projects={projects}
+          onClose={() => setPermissionsMember(null)}
+        />
 
         <DmThread
           request={dmRequest}
@@ -585,6 +600,171 @@ const ProjectAdminRow = ({ project, onUpdate }: { project: any; onUpdate: () => 
         </div>
       )}
     </div>
+  );
+};
+
+// ─── Member Permissions Dialog ────────────────────────────────────────────────
+// Per-member per-project override. If no row exists → project defaults apply.
+// Creating any toggle creates a row; "reset" deletes the row → back to defaults.
+const MemberPermissionsDialog = ({
+  member, projects, onClose,
+}: { member: any; projects: any[]; onClose: () => void }) => {
+  const [overrides, setOverrides] = useState<Record<string, any>>({});
+  const [loading,   setLoading]   = useState(true);
+
+  useEffect(() => {
+    if (!member) return;
+    setLoading(true);
+    supabase
+      .from("member_project_permissions")
+      .select("*")
+      .eq("member_id", member.id)
+      .then(({ data }) => {
+        const map: Record<string, any> = {};
+        (data ?? []).forEach((r: any) => { map[r.project_id] = r; });
+        setOverrides(map);
+        setLoading(false);
+      });
+  }, [member?.id]);
+
+  const upsert = async (projectId: string, field: string, val: boolean) => {
+    const existing = overrides[projectId];
+    if (existing?.id) {
+      await supabase
+        .from("member_project_permissions")
+        .update({ [field]: val })
+        .eq("id", existing.id);
+      setOverrides(prev => ({ ...prev, [projectId]: { ...existing, [field]: val } }));
+    } else {
+      const defaults = projects.find(p => p.id === projectId) ?? {};
+      const row = {
+        member_id:      member.id,
+        project_id:     projectId,
+        can_post:       defaults.can_members_post        ?? true,
+        can_edit:       defaults.can_members_edit        ?? false,
+        can_delete:     defaults.can_members_delete      ?? false,
+        can_create_sub: defaults.can_members_create_sub  ?? false,
+        [field]:        val,
+      };
+      const { data } = await supabase
+        .from("member_project_permissions")
+        .insert(row)
+        .select()
+        .maybeSingle();
+      setOverrides(prev => ({ ...prev, [projectId]: data ?? { ...row } }));
+    }
+    toast.success("saved");
+  };
+
+  const reset = async (projectId: string) => {
+    const existing = overrides[projectId];
+    if (!existing?.id) return;
+    await supabase.from("member_project_permissions").delete().eq("id", existing.id);
+    setOverrides(prev => { const n = { ...prev }; delete n[projectId]; return n; });
+    toast.success("reset to project defaults");
+  };
+
+  if (!member) return null;
+
+  return (
+    <Dialog open={!!member} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent
+        className="max-w-lg"
+        style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}
+      >
+        <DialogHeader>
+          <DialogTitle className="font-medium flex items-center gap-2" style={{ color: "#F5F0EB" }}>
+            <Settings2 className="h-4 w-4" style={{ color: "#E8734A" }} />
+            project permissions · {member.display_name}
+          </DialogTitle>
+        </DialogHeader>
+
+        <p className="text-[11px] font-mono mb-4" style={{ color: "#6A6460" }}>
+          overrides take priority over project defaults. toggle any permission to create an override.
+          hit reset to go back to project defaults.
+        </p>
+
+        {loading ? (
+          <div className="py-8 text-center text-sm font-mono" style={{ color: "#6A6460" }}>loading…</div>
+        ) : (
+          <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+            {projects.length === 0 && (
+              <p className="text-sm font-mono text-center py-8" style={{ color: "#6A6460" }}>no projects yet.</p>
+            )}
+            {projects.map(p => {
+              const ov = overrides[p.id];
+              const has = !!ov?.id;
+
+              // effective values: override if exists, else project default
+              const val = (field: string, def: boolean | null) =>
+                has ? (ov[field] ?? def ?? false) : (def ?? false);
+
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    background: has ? "rgba(232,115,74,0.05)" : "#0D0D0D",
+                    border: has ? "1px solid rgba(232,115,74,0.2)" : "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium" style={{ color: "#F5F0EB" }}>{p.name}</span>
+                      {has && (
+                        <span
+                          className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5"
+                          style={{ background: "rgba(232,115,74,0.15)", color: "#E8734A", borderRadius: 999 }}
+                        >
+                          override active
+                        </span>
+                      )}
+                    </div>
+                    {has && (
+                      <button
+                        onClick={() => reset(p.id)}
+                        className="text-[10px] font-mono uppercase tracking-wider hover:opacity-80 transition-opacity"
+                        style={{ color: "#6A6460" }}
+                      >
+                        reset →
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-4">
+                    {[
+                      { field: "can_post",       label: "can post",           def: p.can_members_post        ?? true  },
+                      { field: "can_edit",       label: "can edit own posts", def: p.can_members_edit        ?? false },
+                      { field: "can_delete",     label: "can delete own",     def: p.can_members_delete      ?? false },
+                      { field: "can_create_sub", label: "can add sub-folder", def: p.can_members_create_sub  ?? false },
+                    ].map(({ field, label, def }) => (
+                      <div
+                        key={field}
+                        className="flex items-center justify-between py-1.5"
+                        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      >
+                        <span className="text-xs" style={{ color: "#A09890" }}>{label}</span>
+                        <Switch
+                          checked={val(field, def)}
+                          onCheckedChange={v => upsert(p.id, field, v)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {!has && (
+                    <p className="text-[10px] font-mono mt-2" style={{ color: "#4A4A4A" }}>
+                      using project defaults — toggle to override for this member
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 };
 
