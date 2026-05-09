@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, Navigate, Link } from "react-router-dom";
+import { useParams, Navigate, Link, useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { PostCard, FeedPost } from "@/components/PostCard";
@@ -17,15 +17,18 @@ import {
   Star, Zap, Lightbulb, Music, Briefcase, Trophy,
   Send, ArrowLeft, Pencil, Trash2,
   FileText, Link as LinkIcon, Youtube, FileType, LayoutTemplate,
-  Users, Globe, Lock, ChevronDown, ChevronUp,
+  Users, Globe, Lock, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 // Channel routing
-const PROJECT_CHANNEL_SLUGS  = ["wins"];         // tile-grid (ProjectChannelPage)
-const GENERAL_HUB_SLUGS      = ["resources"];    // hub page (GeneralChannelPage)
-const IDEAS_CHANNEL_SLUGS    = ["ideas"];         // ideas tabs (IdeasChannelPage)
+const PROJECT_CHANNEL_SLUGS  = ["wins"];
+const GENERAL_HUB_SLUGS      = ["resources"];
+const IDEAS_CHANNEL_SLUGS    = ["ideas"];
 
-interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; }
+// Ordered slugs for left/right switching
+const CHANNEL_ORDER = ["resources", "ai-news", "ideas", "vibing", "hiring", "wins"];
+
+interface Channel { id: string; slug: string; name: string; description: string | null; is_public_visible: boolean | null; intro_video_url?: string | null; }
 
 type PostType = "text" | "link" | "video" | "doc" | "pdf" | "template";
 
@@ -36,6 +39,25 @@ const ICONS: Record<string, { icon: any; color: string }> = {
   "vibing":    { icon: Music,       color: "#7C3AED" },
   "hiring":    { icon: Briefcase,   color: "#16A34A" },
   "wins":      { icon: Trophy,      color: "#EA580C" },
+};
+
+// Per-channel subtle gradient overlays — low saturation, dark
+const CHANNEL_GRADIENTS: Record<string, string> = {
+  "resources": "radial-gradient(ellipse at 85% 15%, rgba(232,115,74,0.09) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(232,115,74,0.05) 0%, transparent 50%)",
+  "ai-news":   "radial-gradient(ellipse at 85% 15%, rgba(29,106,229,0.10) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(29,106,229,0.04) 0%, transparent 50%)",
+  "ideas":     "radial-gradient(ellipse at 85% 15%, rgba(245,197,24,0.09) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(245,197,24,0.04) 0%, transparent 50%)",
+  "vibing":    "radial-gradient(ellipse at 85% 15%, rgba(124,58,237,0.10) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(124,58,237,0.04) 0%, transparent 50%)",
+  "hiring":    "radial-gradient(ellipse at 85% 15%, rgba(22,163,74,0.09) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(22,163,74,0.04) 0%, transparent 50%)",
+  "wins":      "radial-gradient(ellipse at 85% 15%, rgba(234,88,12,0.10) 0%, transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(234,88,12,0.04) 0%, transparent 50%)",
+};
+
+const CHANNEL_ACCENT: Record<string, string> = {
+  "resources": "#E8734A",
+  "ai-news":   "#1D6AE5",
+  "ideas":     "#F5C518",
+  "vibing":    "#7C3AED",
+  "hiring":    "#16A34A",
+  "wins":      "#EA580C",
 };
 
 const EDIT_TYPES: { v: PostType; i: any; l: string }[] = [
@@ -49,10 +71,10 @@ const EDIT_TYPES: { v: PostType; i: any; l: string }[] = [
 
 const dbType = (t: PostType) => (t === "pdf" || t === "template" ? "doc" : t);
 
-const PillStyle = (active: boolean): React.CSSProperties => ({
-  background: active ? "#E8734A" : "#1E1E1E",
+const PillStyle = (active: boolean, accent?: string): React.CSSProperties => ({
+  background: active ? (accent ?? "#E8734A") : "#1E1E1E",
   color: active ? "#0D0D0D" : "#A09890",
-  border: active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+  border: active ? `1px solid ${accent ?? "#E8734A"}` : "1px solid rgba(255,255,255,0.08)",
   borderRadius: 999,
   padding: "6px 14px",
   fontSize: 12,
@@ -65,13 +87,22 @@ const PillStyle = (active: boolean): React.CSSProperties => ({
 const ChannelPage = () => {
   const { slug } = useParams();
   const { user, profile, isAdmin, loading } = useAuth();
+  const navigate = useNavigate();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [tab, setTab] = useState<"posts" | "resources">("posts");
   const [editingPost, setEditingPost] = useState<FeedPost | null>(null);
+  const [channelIntroCollapsed, setChannelIntroCollapsed] = useState(false);
+  const touchStartX = useRef(0);
 
   const isApproved = !!profile?.is_approved;
+  const accent = CHANNEL_ACCENT[slug ?? ""] ?? "#E8734A";
+
+  // Compute prev/next channel slugs
+  const currentIdx = CHANNEL_ORDER.indexOf(slug ?? "");
+  const prevSlug = currentIdx > 0 ? CHANNEL_ORDER[currentIdx - 1] : null;
+  const nextSlug = currentIdx < CHANNEL_ORDER.length - 1 ? CHANNEL_ORDER[currentIdx + 1] : null;
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -81,7 +112,6 @@ const ChannelPage = () => {
     setChannel(ch);
     document.title = `${ch.name.toLowerCase()} — builders house`;
 
-    // For project channels we don't need to load posts here (ProjectChannelPage handles it)
     if ([...PROJECT_CHANNEL_SLUGS, ...GENERAL_HUB_SLUGS, ...IDEAS_CHANNEL_SLUGS].includes(ch.slug)) return;
 
     const { data: ps } = await supabase
@@ -98,13 +128,23 @@ const ChannelPage = () => {
 
   useEffect(() => {
     if (!channel) return;
-    if ([...PROJECT_CHANNEL_SLUGS, ...GENERAL_HUB_SLUGS, ...IDEAS_CHANNEL_SLUGS].includes(channel.slug)) return; // specialised pages handle their own realtime
+    if ([...PROJECT_CHANNEL_SLUGS, ...GENERAL_HUB_SLUGS, ...IDEAS_CHANNEL_SLUGS].includes(channel.slug)) return;
     const ch = supabase
       .channel(`posts:${channel.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "posts", filter: `channel_id=eq.${channel.id}` }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [channel, load]);
+
+  // ── Swipe to change channel ──────────────────────────────────
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const diff = e.changedTouches[0].clientX - touchStartX.current;
+    if (diff > 60 && prevSlug) navigate(`/channel/${prevSlug}`);
+    if (diff < -60 && nextSlug) navigate(`/channel/${nextSlug}`);
+  };
 
   const requestPublic = async (post: FeedPost) => {
     if (!user) return;
@@ -133,6 +173,31 @@ const ChannelPage = () => {
 
   const iconCfg = ICONS[channel.slug] ?? { icon: Star, color: "#E8734A" };
   const Icon = iconCfg.icon;
+  const channelGradient = CHANNEL_GRADIENTS[channel.slug] ?? "";
+
+  // ── Channel switcher buttons ─────────────────────────────────
+  const ChannelSwitcher = () => (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => prevSlug && navigate(`/channel/${prevSlug}`)}
+        disabled={!prevSlug}
+        className="h-8 w-8 flex items-center justify-center rounded-lg transition-all hover:bg-white/10 disabled:opacity-20"
+        style={{ color: accent, border: `1px solid ${accent}33` }}
+        title={prevSlug ? `← ${prevSlug}` : ""}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => nextSlug && navigate(`/channel/${nextSlug}`)}
+        disabled={!nextSlug}
+        className="h-8 w-8 flex items-center justify-center rounded-lg transition-all hover:bg-white/10 disabled:opacity-20"
+        style={{ color: accent, border: `1px solid ${accent}33` }}
+        title={nextSlug ? `${nextSlug} →` : ""}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
 
   if (!user || !isApproved) {
     if (!channel.is_public_visible) return <Navigate to="/" replace />;
@@ -169,12 +234,15 @@ const ChannelPage = () => {
     );
   }
 
-  // ── Hub page (resources) ──────────────────────────────────────────────────
+  // ── Shared channel page header with switcher ─────────────────
   const ChannelPageHeader = () => (
     <header className="mb-6">
-      <Link to="/home" className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 transition-colors hover:text-primary" style={{ color: "#A09890" }}>
-        <ArrowLeft className="h-3.5 w-3.5" />home
-      </Link>
+      <div className="flex items-center justify-between mb-4">
+        <Link to="/home" className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider transition-colors hover:text-primary" style={{ color: "#A09890" }}>
+          <ArrowLeft className="h-3.5 w-3.5" />home
+        </Link>
+        <ChannelSwitcher />
+      </div>
       <div className="flex items-center gap-4">
         <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
           <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
@@ -184,19 +252,63 @@ const ChannelPage = () => {
           {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#A09890" }}>{channel.description}</p>}
         </div>
       </div>
+
+      {/* Per-channel intro video */}
+      {channel.intro_video_url && (
+        <div className="mt-4">
+          <button
+            onClick={() => setChannelIntroCollapsed(v => !v)}
+            className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider mb-2 hover:opacity-80"
+            style={{ color: "#A09890" }}
+          >
+            {channelIntroCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+            {channelIntroCollapsed ? "show intro video" : "hide intro video"}
+          </button>
+          {!channelIntroCollapsed && (
+            <div className="aspect-video overflow-hidden" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", maxWidth: 640 }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${extractYtId(channel.intro_video_url)}`}
+                className="w-full h-full" allowFullScreen allow="autoplay; encrypted-media"
+                title={channel.name}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </header>
   );
 
+  // Shared page wrapper with gradient overlay + swipe
+  const PageWrapper = ({ children }: { children: React.ReactNode }) => (
+    <div
+      className="relative min-h-screen"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Gradient overlay per channel */}
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{ background: channelGradient, zIndex: 0, transition: "background 0.6s ease" }}
+      />
+      <div className="relative" style={{ zIndex: 1 }}>
+        {children}
+      </div>
+    </div>
+  );
+
+  // ── Hub page (resources) ──────────────────────────────────────
   if (GENERAL_HUB_SLUGS.includes(channel.slug)) {
     return (
       <AppLayout>
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
-          <ChannelPageHeader/>
-          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
-            <GeneralChannelPage channel={channel} />
-            <ChannelChat channelId={channel.id} channelName={channel.name} />
+        <PageWrapper>
+          <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+            <ChannelPageHeader />
+            <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+              <GeneralChannelPage channel={channel} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
+            </div>
           </div>
-        </div>
+        </PageWrapper>
       </AppLayout>
     );
   }
@@ -204,13 +316,15 @@ const ChannelPage = () => {
   if (IDEAS_CHANNEL_SLUGS.includes(channel.slug)) {
     return (
       <AppLayout>
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
-          <ChannelPageHeader/>
-          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
-            <IdeasChannelPage channel={channel} />
-            <ChannelChat channelId={channel.id} channelName={channel.name} />
+        <PageWrapper>
+          <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+            <ChannelPageHeader />
+            <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+              <IdeasChannelPage channel={channel} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
+            </div>
           </div>
-        </div>
+        </PageWrapper>
       </AppLayout>
     );
   }
@@ -218,113 +332,95 @@ const ChannelPage = () => {
   if (PROJECT_CHANNEL_SLUGS.includes(channel.slug)) {
     return (
       <AppLayout>
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
-          <ChannelPageHeader/>
-          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
-            <ProjectChannelPage channel={channel} />
-            <ChannelChat channelId={channel.id} channelName={channel.name} />
+        <PageWrapper>
+          <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+            <ChannelPageHeader />
+            <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+              <ProjectChannelPage channel={channel} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
+            </div>
           </div>
-        </div>
+        </PageWrapper>
       </AppLayout>
     );
   }
 
-  // ── All other channels: existing flat feed ─────────────────────────────────
+  // ── All other channels: flat feed ────────────────────────────
   const visible = posts.filter((p) => tab === "resources" ? !!p.is_resource : true);
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
-        <header className="mb-6">
-          <Link
-            to="/home"
-            className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 transition-colors hover:text-primary"
-            style={{ color: "#A09890" }}
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            home
-          </Link>
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 flex items-center justify-center flex-shrink-0" style={{ background: iconCfg.color, borderRadius: 12 }}>
-              <Icon className="h-6 w-6" style={{ color: "#0D0D0D" }} strokeWidth={2.25} />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl md:text-3xl font-medium tracking-tight truncate" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
-                {channel.name.toLowerCase()}
-              </h1>
-              {channel.description && <p className="text-sm mt-0.5 truncate" style={{ color: "#A09890" }}>{channel.description}</p>}
-            </div>
-          </div>
-        </header>
+      <PageWrapper>
+        <div className="max-w-7xl mx-auto px-5 md:px-8 py-6 pb-32">
+          <ChannelPageHeader />
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
-          <div>
-            <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-              <TabsList className="mb-4" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <TabsTrigger value="posts">posts</TabsTrigger>
-                <TabsTrigger value="resources">resources</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value={tab} className="space-y-4">
-                {visible.length === 0 && (
-                  <div className="text-center py-16 text-sm font-mono" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, color: "#A09890" }}>
-                    {tab === "resources" ? "no resources saved yet." : "nothing here yet. be the first."}
-                  </div>
-                )}
-                {visible.map((p) => (
-                  <div key={p.id} className="relative group">
-                    <PostCard post={p} onAdminRequestPublic={isAdmin ? requestPublic : undefined} />
-                    {(p.user_id === user?.id || isAdmin) && (
-                      <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {p.user_id === user?.id && (
-                          <button
-                            onClick={() => setEditingPost(p)}
-                            className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-white/10"
-                            style={{ color: "#A09890" }}
-                            title="edit post"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
+          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
+            <div>
+              <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+                <TabsList className="mb-4" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <TabsTrigger value="posts">posts</TabsTrigger>
+                  <TabsTrigger value="resources">resources</TabsTrigger>
+                </TabsList>
+                <TabsContent value={tab} className="space-y-4">
+                  {visible.length === 0 && (
+                    <div className="text-center py-16 text-sm font-mono" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, color: "#A09890" }}>
+                      {tab === "resources" ? "no resources saved yet." : "nothing here yet. be the first."}
+                    </div>
+                  )}
+                  {visible.map((p) => (
+                    <div key={p.id} className="relative group">
+                      <PostCard post={p} onAdminRequestPublic={isAdmin ? requestPublic : undefined} />
+                      {(p.user_id === user?.id || isAdmin) && (
+                        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {p.user_id === user?.id && (
+                            <button onClick={() => setEditingPost(p)} className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-white/10" style={{ color: "#A09890" }}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <button onClick={() => deletePost(p.id)} className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-red-500/20" style={{ color: "#A09890" }}>
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
-                        )}
-                        <button
-                          onClick={() => deletePost(p.id)}
-                          className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-red-500/20"
-                          style={{ color: "#A09890" }}
-                          title="delete post"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </TabsContent>
-            </Tabs>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
           </div>
-
-          <ChannelChat channelId={channel.id} channelName={channel.name} />
         </div>
-      </div>
 
-      <FloatingActions
-        defaultChannelId={channel.id}
-        defaultIsResource={tab === "resources"}
-        onCreated={load}
-      />
+        <FloatingActions
+          defaultChannelId={channel.id}
+          defaultIsResource={tab === "resources"}
+          onCreated={load}
+        />
 
-      <PostComposer
-        open={!!editingPost}
-        onOpenChange={(o) => { if (!o) setEditingPost(null); }}
-        editPost={editingPost}
-        onCreated={() => { setEditingPost(null); load(); }}
-      />
+        <PostComposer
+          open={!!editingPost}
+          onOpenChange={(o) => { if (!o) setEditingPost(null); }}
+          editPost={editingPost}
+          onCreated={() => { setEditingPost(null); load(); }}
+        />
+      </PageWrapper>
     </AppLayout>
   );
 };
 
+// ── YT id helper ─────────────────────────────────────────────
+const extractYtId = (url: string) => {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    return u.searchParams.get("v") ?? "";
+  } catch { return ""; }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ChannelChat = ({ channelId, channelName }: { channelId: string; channelName: string }) => {
+const ChannelChat = ({ channelId, channelName, accent }: { channelId: string; channelName: string; accent?: string }) => {
   const { user, profile, isAdmin } = useAuth();
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
@@ -332,6 +428,7 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
   const [editingMsgContent, setEditingMsgContent] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const ac = accent ?? "#E8734A";
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -362,29 +459,19 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
     const text = draft.trim();
     setDraft("");
     const { error } = await supabase.from("posts").insert({
-      channel_id: channelId,
-      user_id: user.id,
-      content: text,
-      type: "text",
-      visibility: "community",
-      is_resource: false,
+      channel_id: channelId, user_id: user.id, content: text,
+      type: "text", visibility: "community", is_resource: false,
     });
     if (error) toast.error(error.message);
   };
 
-  const startEditMsg = (m: any) => {
-    setEditingMsgId(m.id);
-    setEditingMsgContent(m.content ?? "");
-  };
-
+  const startEditMsg = (m: any) => { setEditingMsgId(m.id); setEditingMsgContent(m.content ?? ""); };
   const saveEditMsg = async (id: string) => {
     if (!editingMsgContent.trim()) return;
     const { error } = await supabase.from("posts").update({ content: editingMsgContent.trim() }).eq("id", id);
     if (error) { toast.error(error.message); return; }
-    setEditingMsgId(null);
-    load();
+    setEditingMsgId(null); load();
   };
-
   const deleteMsg = async (id: string) => {
     const { error } = await supabase.from("posts").delete().eq("id", id);
     if (error) toast.error(error.message);
@@ -422,7 +509,6 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
           const mine = m.user_id === user?.id;
           const canEdit = mine || isAdmin;
           const isEditing = editingMsgId === m.id;
-
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} group/msg`}>
               <div className="max-w-[80%]">
@@ -433,35 +519,24 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
                 )}
                 <div className="relative">
                   {isEditing ? (
-                    <input
-                      value={editingMsgContent}
-                      onChange={(e) => setEditingMsgContent(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") saveEditMsg(m.id);
-                        if (e.key === "Escape") setEditingMsgId(null);
-                      }}
-                      autoFocus
-                      className="w-full px-3 py-2 text-sm focus:outline-none rounded-lg"
-                      style={{
-                        background: mine ? "#E8734A" : "#1E1E1E",
-                        color: mine ? "#0D0D0D" : "#F5F0EB",
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        minWidth: 120,
-                      }}
+                    <input value={editingMsgContent} onChange={(e) => setEditingMsgContent(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEditMsg(m.id); if (e.key === "Escape") setEditingMsgId(null); }}
+                      autoFocus className="w-full px-3 py-2 text-sm focus:outline-none rounded-lg"
+                      style={{ background: mine ? ac : "#1E1E1E", color: mine ? "#0D0D0D" : "#F5F0EB", border: "1px solid rgba(255,255,255,0.15)", minWidth: 120 }}
                     />
                   ) : (
-                    <div className="px-3 py-2 text-sm" style={{ background: mine ? "#E8734A" : "#1E1E1E", color: mine ? "#0D0D0D" : "#F5F0EB", borderRadius: 8 }}>
+                    <div className="px-3 py-2 text-sm" style={{ background: mine ? ac : "#1E1E1E", color: mine ? "#0D0D0D" : "#F5F0EB", borderRadius: 8 }}>
                       {m.content}
                     </div>
                   )}
                   {canEdit && !isEditing && (
                     <div className={`absolute -top-6 ${mine ? "right-0" : "left-0"} flex gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity`}>
                       {mine && (
-                        <button onClick={() => startEditMsg(m)} className="h-5 w-5 flex items-center justify-center rounded transition-colors hover:bg-white/10" style={{ color: "#A09890" }} title="edit">
+                        <button onClick={() => startEditMsg(m)} className="h-5 w-5 flex items-center justify-center rounded transition-colors hover:bg-white/10" style={{ color: "#A09890" }}>
                           <Pencil className="h-3 w-3" />
                         </button>
                       )}
-                      <button onClick={() => deleteMsg(m.id)} className="h-5 w-5 flex items-center justify-center rounded transition-colors hover:bg-red-500/20" style={{ color: "#A09890" }} title="delete">
+                      <button onClick={() => deleteMsg(m.id)} className="h-5 w-5 flex items-center justify-center rounded transition-colors hover:bg-red-500/20" style={{ color: "#A09890" }}>
                         <Trash2 className="h-3 w-3" />
                       </button>
                     </div>
@@ -476,15 +551,12 @@ const ChannelChat = ({ channelId, channelName }: { channelId: string; channelNam
 
       {!collapsed && profile?.is_approved && (
         <div className="p-3 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="say something…"
-            className="flex-1 px-3 py-2 text-sm focus:outline-none"
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder="say something…" className="flex-1 px-3 py-2 text-sm focus:outline-none"
             style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
           />
-          <button onClick={send} className="h-9 w-9 flex items-center justify-center transition-opacity hover:opacity-90" style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 8 }}>
+          <button onClick={send} className="h-9 w-9 flex items-center justify-center transition-opacity hover:opacity-90"
+            style={{ background: ac, color: "#0D0D0D", borderRadius: 8 }}>
             <Send className="h-4 w-4" />
           </button>
         </div>
@@ -523,12 +595,8 @@ const EditPostComposer = ({
     if (!post) return;
     setBusy(true);
     const { error } = await supabase.from("posts").update({
-      title: title.trim() || null,
-      content: content.trim() || null,
-      type: dbType(type),
-      url: url.trim() || null,
-      visibility,
-      is_resource: isResource,
+      title: title.trim() || null, content: content.trim() || null,
+      type: dbType(type), url: url.trim() || null, visibility, is_resource: isResource,
     }).eq("id", post.id);
     setBusy(false);
     if (error) { toast.error(error.message); return; }
@@ -553,10 +621,16 @@ const EditPostComposer = ({
               ))}
             </div>
           </div>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="title (optional)" maxLength={200} className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
-          <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="what's on your mind?" rows={5} maxLength={5000} className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="title (optional)" maxLength={200}
+            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+          <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="what's on your mind?" rows={5} maxLength={5000}
+            className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           {type !== "text" && (
-            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://"
+              className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }} />
           )}
           <div>
             <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#A09890" }}>visibility</p>
