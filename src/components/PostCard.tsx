@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { AvatarBlock } from "./AvatarBlock";
-import { MessageCircle, ExternalLink, Globe, Pin, Play, Heart, UserX } from "lucide-react";
+import {
+  MessageCircle, ExternalLink, Globe, Pin, Play, Heart, UserX,
+  Pencil, Trash2, MoveRight, X, ChevronRight,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -10,12 +13,13 @@ import { toast } from "sonner";
 export interface FeedPost {
   id: string;
   channel_id: string;
+  project_id?: string | null;
   user_id: string;
   title: string | null;
   content: string;
   type: "text" | "link" | "video" | "doc" | string | null;
   url: string | null;
-  image_urls?: string[] | null;       // ← multiple images
+  image_urls?: string[] | null;
   visibility?: "community" | "public" | "private" | string | null;
   is_resource?: boolean | null;
   created_at: string;
@@ -49,6 +53,21 @@ const ytId = (url: string): string | null => {
 const isImageUrl = (url: string) => /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url);
 const safeHost   = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
+const pillSt = (active: boolean): React.CSSProperties => ({
+  background:   active ? "#E8734A" : "#1E1E1E",
+  color:        active ? "#0D0D0D" : "#A09890",
+  border:       active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 999,
+  padding:      "5px 12px",
+  fontSize:     12,
+  transition:   "all .15s",
+  cursor:       "pointer",
+  textAlign:    "left",
+  whiteSpace:   "nowrap",
+  display:      "block",
+  width:        "100%",
+});
+
 // ─────────────────────────────────────────────────────────────
 // PostCard
 // ─────────────────────────────────────────────────────────────
@@ -58,17 +77,25 @@ export const PostCard = ({
   compact       = false,
   readOnly      = false,
   onAdminRequestPublic,
+  onDeleted,
 }: {
   post: FeedPost;
   showChannel?: boolean;
   compact?: boolean;
   readOnly?: boolean;
   onAdminRequestPublic?: (post: FeedPost) => void;
+  onDeleted?: (id: string) => void;
 }) => {
   const { user, profile, isAdmin } = useAuth();
 
-  const isMember = !!(user && profile?.is_approved);
+  const isMember  = !!(user && profile?.is_approved);
+  const canManage = !readOnly && !!(user && (user.id === post.user_id || isAdmin));
 
+  // ── Display state (updated after inline save) ─────────────
+  const [displayTitle,   setDisplayTitle]   = useState(post.title);
+  const [displayContent, setDisplayContent] = useState(post.content);
+
+  // ── Reactions / Comments ──────────────────────────────────
   const [reactionCount,  setReactionCount]  = useState(post.reaction_count ?? 0);
   const [commentCount,   setCommentCount]   = useState(post.comment_count  ?? 0);
   const [comments,       setComments]       = useState<any[]>([]);
@@ -78,19 +105,36 @@ export const PostCard = ({
   const [playVideo,      setPlayVideo]      = useState(false);
   const [lightboxIdx,    setLightboxIdx]    = useState<number | null>(null);
 
+  // ── Inline edit state ─────────────────────────────────────
+  const [editMode,    setEditMode]    = useState(false);
+  const [editTitle,   setEditTitle]   = useState(post.title ?? "");
+  const [editContent, setEditContent] = useState(post.content);
+  const [saving,      setSaving]      = useState(false);
+
+  // ── Move dialog state ─────────────────────────────────────
+  const [showMoveDialog,  setShowMoveDialog]  = useState(false);
+  const [moveChannels,    setMoveChannels]    = useState<{id:string;slug:string;name:string}[]>([]);
+  const [moveProjects,    setMoveProjects]    = useState<{id:string;name:string;parent_project_id:string|null}[]>([]);
+  const [moveChannelId,   setMoveChannelId]   = useState(post.channel_id);
+  const [moveProjectId,   setMoveProjectId]   = useState<string|null>(post.project_id ?? null);
+  const [moving,          setMoving]          = useState(false);
+
+  // ── Fetch data for move dialog when opened ────────────────
+  useEffect(() => {
+    if (!showMoveDialog) return;
+    supabase.from("channels").select("id,slug,name").order("sort_order")
+      .then(({ data }) => setMoveChannels(data ?? []));
+    supabase.from("channel_projects").select("id,name,parent_project_id")
+      .eq("is_active", true).order("name")
+      .then(({ data }) => setMoveProjects(data ?? []));
+  }, [showMoveDialog]);
+
   // ── Fetch accurate counts on mount ────────────────────────
   useEffect(() => {
-    // Reaction count (works for public posts even without auth)
-    supabase
-      .from("reactions")
-      .select("*", { count: "exact", head: true })
+    supabase.from("reactions").select("*", { count: "exact", head: true })
       .eq("post_id", post.id)
       .then(({ count }) => { if (count !== null) setReactionCount(count); });
-
-    // Comment count
-    supabase
-      .from("comments")
-      .select("*", { count: "exact", head: true })
+    supabase.from("comments").select("*", { count: "exact", head: true })
       .eq("post_id", post.id)
       .then(({ count }) => { if (count !== null) setCommentCount(count); });
   }, [post.id]);
@@ -98,11 +142,8 @@ export const PostCard = ({
   // ── Which emojis did THIS member already react with ───────
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("reactions")
-      .select("emoji")
-      .eq("post_id", post.id)
-      .eq("user_id", user.id)
+    supabase.from("reactions").select("emoji")
+      .eq("post_id", post.id).eq("user_id", user.id)
       .then(({ data }) => { if (data) setReactedEmojis(new Set(data.map((r) => r.emoji))); });
   }, [user, post.id]);
 
@@ -141,16 +182,14 @@ export const PostCard = ({
   // ── Submit comment (members only) ─────────────────────────
   const submitComment = async () => {
     if (!newComment.trim() || !isMember) return;
-    const { error } = await supabase
-      .from("comments")
+    const { error } = await supabase.from("comments")
       .insert({ post_id: post.id, user_id: user!.id, content: newComment.trim() });
     if (error) { toast.error(error.message); return; }
     if (post.user_id !== user!.id) {
       await supabase.from("notifications").insert({
-        recipient_id: post.user_id,
-        type:         "comment",
-        related_id:   post.id,
-        content:      `${profile!.display_name} replied to your post`,
+        recipient_id: post.user_id, type: "comment",
+        related_id: post.id,
+        content: `${profile!.display_name} replied to your post`,
       });
     }
     setNewComment("");
@@ -158,357 +197,562 @@ export const PostCard = ({
     loadComments();
   };
 
+  // ── Inline edit save ──────────────────────────────────────
+  const handleSave = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("posts")
+      .update({ title: editTitle.trim() || null, content: editContent })
+      .eq("id", post.id);
+    if (error) { toast.error(error.message); setSaving(false); return; }
+    setDisplayTitle(editTitle.trim() || null);
+    setDisplayContent(editContent);
+    toast.success("post updated");
+    setSaving(false);
+    setEditMode(false);
+  };
+
+  const cancelEdit = () => {
+    setEditTitle(displayTitle ?? "");
+    setEditContent(displayContent);
+    setEditMode(false);
+  };
+
+  // ── Delete ────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!window.confirm("delete this post?")) return;
+    const { error } = await supabase.from("posts").delete().eq("id", post.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("deleted");
+    onDeleted?.(post.id);
+  };
+
+  // ── Move ──────────────────────────────────────────────────
+  const handleMove = async () => {
+    setMoving(true);
+    const { error } = await supabase.from("posts")
+      .update({ channel_id: moveChannelId, project_id: moveProjectId })
+      .eq("id", post.id);
+    if (error) { toast.error(error.message); setMoving(false); return; }
+    toast.success("post moved");
+    setMoving(false);
+    setShowMoveDialog(false);
+    onDeleted?.(post.id); // remove from current view since location changed
+  };
+
   const authorName = readOnly ? "builders house" : (post.author?.display_name ?? "member");
 
-  const yt         = post.url && post.type === "video" ? ytId(post.url) : null;
-  const showImage  = post.url && isImageUrl(post.url) && !yt;
-  const showLink   = post.url && !yt && !showImage;
+  const yt        = post.url && post.type === "video" ? ytId(post.url) : null;
+  const showImage = post.url && isImageUrl(post.url) && !yt;
+  const showLink  = post.url && !yt && !showImage;
 
-  // Collect all images: dedicated image_urls first, then fallback to url if it's an image
   const allImages: string[] = [
     ...(Array.isArray(post.image_urls) ? post.image_urls : []),
     ...(showImage ? [post.url!] : []),
   ];
 
+  // ─── Project tree helpers for move dialog ─────────────────
+  const topLevelProjects = moveProjects.filter((p) => !p.parent_project_id);
+  const childProjects    = (parentId: string) => moveProjects.filter((p) => p.parent_project_id === parentId);
+
   // ─────────────────────────────────────────────────────────
   return (
-    <article
-      className="animate-fade-in"
-      style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 24 }}
-    >
-      {/* ── Author row ── */}
-      <div className="flex items-center gap-3 mb-3">
-        {!readOnly ? (
-          <Link to={`/profile/${post.user_id}`} className="flex items-center gap-3 group min-w-0 flex-1">
-            <AvatarBlock url={post.author?.avatar_url} name={authorName} size={32} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium truncate" style={{ color: "#F5F0EB" }}>{authorName}</span>
-                <span className="text-[11px] uppercase tracking-wider" style={{ background: "#2A1A0E", color: "#E8734A", padding: "2px 8px", borderRadius: 999 }}>
-                  builder
-                </span>
-                {post.author?.is_admin && (
-                  <span className="text-[11px] uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#C9B99A", padding: "2px 8px", borderRadius: 999 }}>
-                    admin
-                  </span>
-                )}
-              </div>
-              <div className="text-[11px] font-mono uppercase mt-0.5" style={{ color: "#8A8480" }}>
-                {timeAgo(post.created_at)}
-                {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
-              </div>
-            </div>
-          </Link>
-        ) : (
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full flex items-center justify-center" style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span className="text-xs" style={{ color: "#F5F0EB" }}>b</span>
-            </div>
-            <div>
-              <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>builders house</div>
-              <div className="text-[11px] font-mono uppercase" style={{ color: "#8A8480" }}>
-                {timeAgo(post.created_at)}
-                {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
-              </div>
-            </div>
+    <>
+      <article
+        className="animate-fade-in group relative"
+        style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 24 }}
+      >
+        {/* ── Manage buttons (hover reveal, top-right) ── */}
+        {canManage && !editMode && (
+          <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            {user?.id === post.user_id && (
+              <button
+                onClick={() => setEditMode(true)}
+                className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-white/10"
+                style={{ color: "#A09890" }}
+                title="edit post"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              onClick={() => setShowMoveDialog(true)}
+              className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-white/10"
+              style={{ color: "#A09890" }}
+              title="move post"
+            >
+              <MoveRight className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={handleDelete}
+              className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-red-500/20"
+              style={{ color: "#A09890" }}
+              title="delete post"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
 
-        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-          {post.is_pinned && <Pin className="h-3.5 w-3.5" style={{ color: "#E8734A" }} />}
-          {post.visibility === "public" && (
-            <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1A3A2A", color: "#7AC8A0", padding: "2px 8px", borderRadius: 999 }}>public</span>
-          )}
-          {post.visibility === "private" && (
-            <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#8A8480", padding: "2px 8px", borderRadius: 999 }}>private</span>
-          )}
-        </div>
-      </div>
-
-      {/* ── Title + Body ── */}
-      {post.title && (
-        <h3 className="font-medium mb-2 leading-snug" style={{ color: "#F5F0EB", fontSize: 15, letterSpacing: "-0.01em" }}>
-          {post.title}
-        </h3>
-      )}
-      {post.content && (
-        <p
-          className={`whitespace-pre-wrap ${compact ? "line-clamp-3" : ""}`}
-          style={{ color: "#8A8480", fontSize: 14, lineHeight: 1.5 }}
-        >
-          {post.content}
-        </p>
-      )}
-
-      {/* ── YouTube embed ── */}
-      {yt && !playVideo && (
-        <button
-          onClick={() => setPlayVideo(true)}
-          className="mt-4 relative w-full aspect-video overflow-hidden block group"
-          style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}
-        >
-          <img src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`} alt={post.title || "video"} className="w-full h-full object-cover" loading="lazy" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex items-center justify-center transition-transform group-hover:scale-110" style={{ background: "rgba(232,115,74,0.9)", borderRadius: "50%", width: 48, height: 48 }}>
-              <Play className="h-5 w-5 ml-0.5" style={{ color: "#0D0D0D" }} fill="#0D0D0D" />
-            </div>
-          </div>
-        </button>
-      )}
-      {yt && playVideo && (
-        <div className="mt-4 aspect-video overflow-hidden" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}>
-          <iframe
-            src={`https://www.youtube.com/embed/${yt}?autoplay=1`}
-            className="w-full h-full"
-            allowFullScreen
-            allow="autoplay; encrypted-media"
-            title={post.title || "video"}
-          />
-        </div>
-      )}
-
-      {/* ── Images (single or gallery) ── */}
-      {allImages.length > 0 && (
-        <div className={`mt-4 ${allImages.length > 1 ? "grid grid-cols-2 gap-1.5" : ""}`}>
-          {allImages.map((src, idx) => (
-            <button
-              key={idx}
-              onClick={() => setLightboxIdx(idx)}
-              className={`block overflow-hidden ${allImages.length === 1 ? "w-full" : ""}`}
-              style={{ borderRadius: allImages.length === 1 ? 12 : 8, border: "1px solid rgba(255,255,255,0.06)" }}
-            >
-              <img
-                src={src}
-                alt={post.title || `image ${idx + 1}`}
-                loading="lazy"
-                className="w-full object-cover"
-                style={{ maxHeight: allImages.length === 1 ? undefined : 180 }}
-              />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── Link preview ── */}
-      {showLink && (
-        <a
-          href={post.url!}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 flex items-stretch overflow-hidden transition-opacity hover:opacity-90"
-          style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}
-        >
-          <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 80, background: "#0D0D0D" }}>
-            <ExternalLink className="h-5 w-5" style={{ color: "#8A8480" }} />
-          </div>
-          <div className="flex-1 min-w-0 p-3">
-            <div className="text-[10px] font-mono uppercase tracking-wider truncate" style={{ color: "#8A8480" }}>{safeHost(post.url!)}</div>
-            <div className="text-sm font-medium truncate mt-0.5" style={{ color: "#F5F0EB" }}>{post.title || post.url}</div>
-          </div>
-        </a>
-      )}
-
-      {/* ── Reactions + Comments ── */}
-      {!readOnly && (
-        <>
-          {isMember ? (
-            /* ── Member view: emoji pill buttons ── */
-            <div className="mt-5 flex items-center gap-1.5 flex-wrap">
-              {EMOJIS.map((e) => {
-                const active = reactedEmojis.has(e);
-                return (
-                  <button
-                    key={e}
-                    onClick={() => react(e)}
-                    className="text-xs transition-colors"
-                    style={{
-                      background:   "#1E1E1E",
-                      border:       active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
-                      borderRadius: 999,
-                      padding:      "4px 10px",
-                      color:        active ? "#E8734A" : "#F5F0EB",
-                    }}
-                  >
-                    {e}
-                  </button>
-                );
-              })}
-              {reactionCount > 0 && (
-                <span className="text-xs font-mono ml-1" style={{ color: "#8A8480" }}>{reactionCount}</span>
-              )}
-              {isAdmin && post.visibility === "community" && onAdminRequestPublic && (
-                <button
-                  onClick={() => onAdminRequestPublic(post)}
-                  className="ml-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 transition-colors"
-                  style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 999, padding: "4px 10px", color: "#C9B99A" }}
-                >
-                  <Globe className="h-3 w-3" /> request public
-                </button>
-              )}
-              <button
-                onClick={toggleComments}
-                className="ml-auto text-xs flex items-center gap-1.5 font-mono transition-colors hover:text-foreground"
-                style={{ color: "#8A8480" }}
-              >
-                <MessageCircle className="h-3.5 w-3.5" />
-                {commentCount} {commentCount === 1 ? "comment" : "comments"}
-              </button>
-            </div>
-          ) : (
-            /* ── Non-member view: read-only counts + join prompt ── */
-            <div className="mt-5 flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => react("")}   /* react() checks isMember and shows toast */
-                className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
-                style={{ color: "#8A8480" }}
-              >
-                <Heart className="h-3.5 w-3.5" />
-                {reactionCount} {reactionCount === 1 ? "reaction" : "reactions"}
-              </button>
-              <button
-                onClick={toggleComments}
-                className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
-                style={{ color: "#8A8480" }}
-              >
-                <MessageCircle className="h-3.5 w-3.5" />
-                {commentCount} {commentCount === 1 ? "comment" : "comments"}
-              </button>
-              <Link
-                to="/login"
-                className="ml-auto text-[10px] font-mono uppercase tracking-wider"
-                style={{ color: "#E8734A" }}
-              >
-                join to interact →
-              </Link>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── Comments section ── */}
-      {showComments && (
-        <div className="mt-5 pt-5 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          {comments.length === 0 && (
-            <p className="text-xs font-mono text-center py-4" style={{ color: "#8A8480" }}>no comments yet.</p>
-          )}
-          {comments.map((c) => (
-            <div key={c.id} className="flex gap-2">
-              {isMember ? (
-                <AvatarBlock url={c.profiles?.avatar_url} name={c.profiles?.display_name ?? "?"} size={28} />
-              ) : (
-                /* Hidden avatar for non-members */
-                <div
-                  className="h-7 w-7 rounded-full flex-shrink-0 flex items-center justify-center"
-                  style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.08)" }}
-                >
-                  <UserX className="h-3.5 w-3.5" style={{ color: "#4A4A4A" }} />
-                </div>
-              )}
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                  {isMember ? (
-                    <span className="text-xs font-medium" style={{ color: "#F5F0EB" }}>
-                      {c.profiles?.display_name}
-                    </span>
-                  ) : (
-                    /* Name is hidden for non-members */
-                    <span
-                      className="text-xs font-mono italic"
-                      style={{ color: "#4A4A4A" }}
-                      title="sign in to see member names"
-                    >
-                      builder •••
+        {/* ── Author row ── */}
+        <div className="flex items-center gap-3 mb-3">
+          {!readOnly ? (
+            <Link to={`/profile/${post.user_id}`} className="flex items-center gap-3 group/author min-w-0 flex-1">
+              <AvatarBlock url={post.author?.avatar_url} name={authorName} size={32} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium truncate" style={{ color: "#F5F0EB" }}>{authorName}</span>
+                  <span className="text-[11px] uppercase tracking-wider" style={{ background: "#2A1A0E", color: "#E8734A", padding: "2px 8px", borderRadius: 999 }}>
+                    builder
+                  </span>
+                  {post.author?.is_admin && (
+                    <span className="text-[11px] uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#C9B99A", padding: "2px 8px", borderRadius: 999 }}>
+                      admin
                     </span>
                   )}
-                  <span className="text-[10px] font-mono" style={{ color: "#8A8480" }}>{timeAgo(c.created_at)}</span>
                 </div>
-                <p className="text-sm" style={{ color: "#F5F0EB" }}>{c.content}</p>
+                <div className="text-[11px] font-mono uppercase mt-0.5" style={{ color: "#8A8480" }}>
+                  {timeAgo(post.created_at)}
+                  {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
+                </div>
+              </div>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full flex items-center justify-center" style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <span className="text-xs" style={{ color: "#F5F0EB" }}>b</span>
+              </div>
+              <div>
+                <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>builders house</div>
+                <div className="text-[11px] font-mono uppercase" style={{ color: "#8A8480" }}>
+                  {timeAgo(post.created_at)}
+                  {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
+                </div>
               </div>
             </div>
-          ))}
-
-          {/* Comment input: members only */}
-          {isMember ? (
-            <div className="flex gap-2 mt-3">
-              <input
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitComment()}
-                placeholder="add a comment…"
-                maxLength={1000}
-                className="flex-1 px-3 py-2 text-sm focus:outline-none"
-                style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-              />
-              <Button size="sm" onClick={submitComment}>send</Button>
-            </div>
-          ) : (
-            <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-              <Link
-                to="/login"
-                className="text-xs font-mono"
-                style={{ color: "#E8734A" }}
-              >
-                join builders house to comment →
-              </Link>
-            </div>
           )}
-        </div>
-      )}
 
-      {/* ── Lightbox ── */}
-      {lightboxIdx !== null && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.9)" }}
-          onClick={() => setLightboxIdx(null)}
-        >
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+            {post.is_pinned && <Pin className="h-3.5 w-3.5" style={{ color: "#E8734A" }} />}
+            {post.visibility === "public" && (
+              <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1A3A2A", color: "#7AC8A0", padding: "2px 8px", borderRadius: 999 }}>public</span>
+            )}
+            {post.visibility === "private" && (
+              <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#8A8480", padding: "2px 8px", borderRadius: 999 }}>private</span>
+            )}
+          </div>
+        </div>
+
+        {/* ── Inline edit mode ── */}
+        {editMode ? (
+          <div className="space-y-2 mb-3">
+            <input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              placeholder="title (optional)"
+              maxLength={200}
+              className="w-full px-3 py-2 text-sm font-medium focus:outline-none"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.1)", color: "#F5F0EB", borderRadius: 8 }}
+            />
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              placeholder="what's on your mind?"
+              rows={4}
+              maxLength={5000}
+              className="w-full px-3 py-2 text-sm resize-none focus:outline-none"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.1)", color: "#F5F0EB", borderRadius: 8 }}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? "saving…" : "save"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={cancelEdit}>cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ── Title + Body ── */}
+            {displayTitle && (
+              <h3 className="font-medium mb-2 leading-snug" style={{ color: "#F5F0EB", fontSize: 15, letterSpacing: "-0.01em" }}>
+                {displayTitle}
+              </h3>
+            )}
+            {displayContent && (
+              <p
+                className={`whitespace-pre-wrap ${compact ? "line-clamp-3" : ""}`}
+                style={{ color: "#8A8480", fontSize: 14, lineHeight: 1.5 }}
+              >
+                {displayContent}
+              </p>
+            )}
+          </>
+        )}
+
+        {/* ── YouTube embed ── */}
+        {yt && !playVideo && (
           <button
-            className="absolute top-4 right-4 h-9 w-9 flex items-center justify-center rounded-full"
-            style={{ background: "rgba(255,255,255,0.1)" }}
+            onClick={() => setPlayVideo(true)}
+            className="mt-4 relative w-full aspect-video overflow-hidden block group/yt"
+            style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <img src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`} alt={displayTitle || "video"} className="w-full h-full object-cover" loading="lazy" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center justify-center transition-transform group-hover/yt:scale-110" style={{ background: "rgba(232,115,74,0.9)", borderRadius: "50%", width: 48, height: 48 }}>
+                <Play className="h-5 w-5 ml-0.5" style={{ color: "#0D0D0D" }} fill="#0D0D0D" />
+              </div>
+            </div>
+          </button>
+        )}
+        {yt && playVideo && (
+          <div className="mt-4 aspect-video overflow-hidden" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}>
+            <iframe
+              src={`https://www.youtube.com/embed/${yt}?autoplay=1`}
+              className="w-full h-full"
+              allowFullScreen
+              allow="autoplay; encrypted-media"
+              title={displayTitle || "video"}
+            />
+          </div>
+        )}
+
+        {/* ── Images (single or gallery) ── */}
+        {allImages.length > 0 && (
+          <div className={`mt-4 ${allImages.length > 1 ? "grid grid-cols-2 gap-1.5" : ""}`}>
+            {allImages.map((src, idx) => (
+              <button
+                key={idx}
+                onClick={() => setLightboxIdx(idx)}
+                className={`block overflow-hidden ${allImages.length === 1 ? "w-full" : ""}`}
+                style={{ borderRadius: allImages.length === 1 ? 12 : 8, border: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <img
+                  src={src}
+                  alt={displayTitle || `image ${idx + 1}`}
+                  loading="lazy"
+                  className="w-full object-cover"
+                  style={{ maxHeight: allImages.length === 1 ? undefined : 180 }}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Link preview ── */}
+        {showLink && (
+          <a
+            href={post.url!}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 flex items-stretch overflow-hidden transition-opacity hover:opacity-90"
+            style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}
+          >
+            <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 80, background: "#0D0D0D" }}>
+              <ExternalLink className="h-5 w-5" style={{ color: "#8A8480" }} />
+            </div>
+            <div className="flex-1 min-w-0 p-3">
+              <div className="text-[10px] font-mono uppercase tracking-wider truncate" style={{ color: "#8A8480" }}>{safeHost(post.url!)}</div>
+              <div className="text-sm font-medium truncate mt-0.5" style={{ color: "#F5F0EB" }}>{displayTitle || post.url}</div>
+            </div>
+          </a>
+        )}
+
+        {/* ── Reactions + Comments ── */}
+        {!readOnly && !editMode && (
+          <>
+            {isMember ? (
+              <div className="mt-5 flex items-center gap-1.5 flex-wrap">
+                {EMOJIS.map((e) => {
+                  const active = reactedEmojis.has(e);
+                  return (
+                    <button
+                      key={e}
+                      onClick={() => react(e)}
+                      className="text-xs transition-colors"
+                      style={{
+                        background:   "#1E1E1E",
+                        border:       active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: 999,
+                        padding:      "4px 10px",
+                        color:        active ? "#E8734A" : "#F5F0EB",
+                      }}
+                    >
+                      {e}
+                    </button>
+                  );
+                })}
+                {reactionCount > 0 && (
+                  <span className="text-xs font-mono ml-1" style={{ color: "#8A8480" }}>{reactionCount}</span>
+                )}
+                {isAdmin && post.visibility === "community" && onAdminRequestPublic && (
+                  <button
+                    onClick={() => onAdminRequestPublic(post)}
+                    className="ml-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 transition-colors"
+                    style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 999, padding: "4px 10px", color: "#C9B99A" }}
+                  >
+                    <Globe className="h-3 w-3" /> request public
+                  </button>
+                )}
+                <button
+                  onClick={toggleComments}
+                  className="ml-auto text-xs flex items-center gap-1.5 font-mono transition-colors hover:text-foreground"
+                  style={{ color: "#8A8480" }}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {commentCount} {commentCount === 1 ? "comment" : "comments"}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-5 flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => react("")}
+                  className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
+                  style={{ color: "#8A8480" }}
+                >
+                  <Heart className="h-3.5 w-3.5" />
+                  {reactionCount} {reactionCount === 1 ? "reaction" : "reactions"}
+                </button>
+                <button
+                  onClick={toggleComments}
+                  className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
+                  style={{ color: "#8A8480" }}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {commentCount} {commentCount === 1 ? "comment" : "comments"}
+                </button>
+                <Link
+                  to="/login"
+                  className="ml-auto text-[10px] font-mono uppercase tracking-wider"
+                  style={{ color: "#E8734A" }}
+                >
+                  join to interact →
+                </Link>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Comments section ── */}
+        {showComments && (
+          <div className="mt-5 pt-5 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            {comments.length === 0 && (
+              <p className="text-xs font-mono text-center py-4" style={{ color: "#8A8480" }}>no comments yet.</p>
+            )}
+            {comments.map((c) => (
+              <div key={c.id} className="flex gap-2">
+                {isMember ? (
+                  <AvatarBlock url={c.profiles?.avatar_url} name={c.profiles?.display_name ?? "?"} size={28} />
+                ) : (
+                  <div
+                    className="h-7 w-7 rounded-full flex-shrink-0 flex items-center justify-center"
+                    style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.08)" }}
+                  >
+                    <UserX className="h-3.5 w-3.5" style={{ color: "#4A4A4A" }} />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    {isMember ? (
+                      <span className="text-xs font-medium" style={{ color: "#F5F0EB" }}>{c.profiles?.display_name}</span>
+                    ) : (
+                      <span className="text-xs font-mono italic" style={{ color: "#4A4A4A" }} title="sign in to see member names">
+                        builder •••
+                      </span>
+                    )}
+                    <span className="text-[10px] font-mono" style={{ color: "#8A8480" }}>{timeAgo(c.created_at)}</span>
+                  </div>
+                  <p className="text-sm" style={{ color: "#F5F0EB" }}>{c.content}</p>
+                </div>
+              </div>
+            ))}
+
+            {isMember ? (
+              <div className="flex gap-2 mt-3">
+                <input
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitComment()}
+                  placeholder="add a comment…"
+                  maxLength={1000}
+                  className="flex-1 px-3 py-2 text-sm focus:outline-none"
+                  style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
+                />
+                <Button size="sm" onClick={submitComment}>send</Button>
+              </div>
+            ) : (
+              <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <Link to="/login" className="text-xs font-mono" style={{ color: "#E8734A" }}>
+                  join builders house to comment →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Lightbox ── */}
+        {lightboxIdx !== null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.9)" }}
             onClick={() => setLightboxIdx(null)}
           >
-            ✕
-          </button>
-          {allImages.length > 1 && lightboxIdx > 0 && (
             <button
-              className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
+              className="absolute top-4 right-4 h-9 w-9 flex items-center justify-center rounded-full"
               style={{ background: "rgba(255,255,255,0.1)" }}
-              onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! - 1 + allImages.length) % allImages.length); }}
+              onClick={() => setLightboxIdx(null)}
             >
-              ‹
+              ✕
             </button>
-          )}
-          <img
-            src={allImages[lightboxIdx]}
-            alt=""
-            className="max-w-full max-h-[90vh] object-contain"
-            style={{ borderRadius: 12 }}
+            {allImages.length > 1 && lightboxIdx > 0 && (
+              <button
+                className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
+                style={{ background: "rgba(255,255,255,0.1)" }}
+                onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! - 1 + allImages.length) % allImages.length); }}
+              >
+                ‹
+              </button>
+            )}
+            <img
+              src={allImages[lightboxIdx]}
+              alt=""
+              className="max-w-full max-h-[90vh] object-contain"
+              style={{ borderRadius: 12 }}
+              onClick={(e) => e.stopPropagation()}
+            />
+            {allImages.length > 1 && lightboxIdx < allImages.length - 1 && (
+              <button
+                className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
+                style={{ background: "rgba(255,255,255,0.1)" }}
+                onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! + 1) % allImages.length); }}
+              >
+                ›
+              </button>
+            )}
+            {allImages.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {allImages.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={(e) => { e.stopPropagation(); setLightboxIdx(i); }}
+                    className="h-1.5 rounded-full transition-all"
+                    style={{ width: i === lightboxIdx ? 20 : 6, background: i === lightboxIdx ? "#E8734A" : "rgba(255,255,255,0.3)" }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </article>
+
+      {/* ── Move dialog ─────────────────────────────────────────── */}
+      {showMoveDialog && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.85)" }}
+          onClick={() => setShowMoveDialog(false)}
+        >
+          <div
+            className="w-full max-w-md"
+            style={{ background: "#1A1A1A", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 16, padding: 24, maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column" }}
             onClick={(e) => e.stopPropagation()}
-          />
-          {allImages.length > 1 && lightboxIdx < allImages.length - 1 && (
-            <button
-              className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
-              style={{ background: "rgba(255,255,255,0.1)" }}
-              onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! + 1) % allImages.length); }}
-            >
-              ›
-            </button>
-          )}
-          {allImages.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
-              {allImages.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={(e) => { e.stopPropagation(); setLightboxIdx(i); }}
-                  className="h-1.5 rounded-full transition-all"
-                  style={{ width: i === lightboxIdx ? 20 : 6, background: i === lightboxIdx ? "#E8734A" : "rgba(255,255,255,0.3)" }}
-                />
-              ))}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5 flex-shrink-0">
+              <div>
+                <h3 className="text-sm font-medium" style={{ color: "#F5F0EB" }}>move post</h3>
+                <p className="text-[11px] font-mono mt-0.5" style={{ color: "#8A8480" }}>pick a new channel and project</p>
+              </div>
+              <button
+                onClick={() => setShowMoveDialog(false)}
+                className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10"
+                style={{ color: "#8A8480" }}
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          )}
+
+            <div className="flex-1 overflow-y-auto space-y-5 min-h-0">
+              {/* Channel picker */}
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider mb-2.5" style={{ color: "#8A8480" }}>channel</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {moveChannels.map((ch) => (
+                    <button
+                      key={ch.id}
+                      onClick={() => setMoveChannelId(ch.id)}
+                      style={{
+                        background:   moveChannelId === ch.id ? "#E8734A" : "#1E1E1E",
+                        color:        moveChannelId === ch.id ? "#0D0D0D" : "#A09890",
+                        border:       moveChannelId === ch.id ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 999, padding: "5px 12px", fontSize: 12, cursor: "pointer",
+                        transition:   "all .15s",
+                      }}
+                    >
+                      {ch.name.toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Project picker */}
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider mb-2.5" style={{ color: "#8A8480" }}>project (optional)</p>
+                <div className="space-y-1">
+                  {/* No project option */}
+                  <button
+                    onClick={() => setMoveProjectId(null)}
+                    style={pillSt(moveProjectId === null)}
+                  >
+                    <span style={{ color: "inherit" }}>no project — general feed</span>
+                  </button>
+
+                  {/* Top-level projects */}
+                  {topLevelProjects.map((proj) => (
+                    <div key={proj.id}>
+                      <button onClick={() => setMoveProjectId(proj.id)} style={pillSt(moveProjectId === proj.id)}>
+                        {proj.name}
+                      </button>
+                      {/* Sub-projects (1 level) */}
+                      {childProjects(proj.id).map((child) => (
+                        <button
+                          key={child.id}
+                          onClick={() => setMoveProjectId(child.id)}
+                          style={{ ...pillSt(moveProjectId === child.id), marginTop: 4, paddingLeft: 24 }}
+                        >
+                          <span style={{ opacity: 0.5, marginRight: 6 }}>└</span>{child.name}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  {moveProjects.length === 0 && (
+                    <p className="text-xs font-mono py-2" style={{ color: "#8A8480" }}>loading projects…</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-2 mt-5 flex-shrink-0 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <button
+                onClick={handleMove}
+                disabled={moving}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10, border: "none", cursor: moving ? "not-allowed" : "pointer" }}
+              >
+                <ChevronRight className="h-4 w-4" />
+                {moving ? "moving…" : "move post"}
+              </button>
+              <button
+                onClick={() => setShowMoveDialog(false)}
+                className="px-4 py-2.5 text-sm transition-colors hover:bg-white/10"
+                style={{ background: "#1E1E1E", color: "#A09890", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}
+              >
+                cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </article>
+    </>
   );
 };
 
