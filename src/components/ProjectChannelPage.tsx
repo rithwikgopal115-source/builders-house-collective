@@ -63,6 +63,24 @@ const GRADIENTS: { base: [string,string,string]; hover: [string,string,string]; 
 const gradientCss = (c:[string,string,string], deg=135) =>
   `linear-gradient(${deg}deg,${c[0]} 0%,${c[1]} 50%,${c[2]} 100%)`;
 
+// ── Cascade delete helper ─────────────────────────────────────
+const cascadeDeleteProject = async (projectId: string): Promise<void> => {
+  const collectDescendants = async (id: string): Promise<string[]> => {
+    const { data } = await supabase.from('channel_projects').select('id').eq('parent_project_id', id);
+    const childIds = (data ?? []).map((p: any) => p.id);
+    const nested = await Promise.all(childIds.map(collectDescendants));
+    return [...childIds, ...nested.flat()];
+  };
+  const descendantIds = await collectDescendants(projectId);
+  const allIds = [...descendantIds, projectId];
+  for (const id of allIds) {
+    await supabase.from('posts').delete().eq('project_id', id);
+  }
+  for (const id of allIds) {
+    await supabase.from('channel_projects').update({ is_active: false }).eq('id', id);
+  }
+};
+
 const getTextColor = (idx:number) => {
   const hex = GRADIENTS[idx]?.base[1] ?? '#0D0D0D';
   const r=parseInt(hex.slice(1,3),16)/255, g=parseInt(hex.slice(3,5),16)/255, b=parseInt(hex.slice(5,7),16)/255;
@@ -457,7 +475,7 @@ const AllProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{
   const used=projects.map(p=>p.slot_number);
   const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
   const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
-  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
+  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}" and all its sub-projects and posts?`))return;await cascadeDeleteProject(p.id);toast.success('deleted — all sub-projects and posts removed');load();};
 
   return (
     <div>
