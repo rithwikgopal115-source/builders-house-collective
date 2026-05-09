@@ -196,11 +196,9 @@ const AddProjectTile = ({onClick,nextSlot,style}:{onClick:()=>void;nextSlot:numb
 };
 
 // ── Post Feed ─────────────────────────────────────────────────
-const PostFeed = ({channelId,projectId}:{channelId:string;projectId:string|null|'all'}) => {
-  const {user,isAdmin}=useAuth();
+const PostFeed = ({channelId,projectId,isVisitor=false}:{channelId:string;projectId:string|null|'all';isVisitor?:boolean}) => {
   const [posts,setPosts]=useState<FeedPost[]>([]);
   const [loading,setLoading]=useState(true);
-  const [editingPost,setEditingPost]=useState<FeedPost|null>(null);
 
   const load=useCallback(async()=>{
     setLoading(true);
@@ -210,45 +208,34 @@ const PostFeed = ({channelId,projectId}:{channelId:string;projectId:string|null|
     if(projectId==='all'){}
     else if(projectId===null)q=q.is('project_id',null);
     else q=q.eq('project_id',projectId);
+    if(isVisitor)q=q.eq('visibility','public');
     const {data}=await q;
     setPosts((data??[]).map((p:any)=>({...p,author:p.profiles})));
     setLoading(false);
-  },[channelId,projectId]);
+  },[channelId,projectId,isVisitor]);
 
   useEffect(()=>{load();},[load]);
   useEffect(()=>{
+    if(isVisitor)return;
     const ch=supabase.channel(`pcpf:${channelId}:${String(projectId)}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'posts',filter:`channel_id=eq.${channelId}`},load).subscribe();
     return ()=>{supabase.removeChannel(ch);};
-  },[channelId,projectId,load]);
-
-  const deletePost=async(id:string)=>{
-    if(!window.confirm('delete this post?'))return;
-    const {error}=await supabase.from('posts').delete().eq('id',id);
-    if(error){toast.error(error.message);return;}
-    toast.success('deleted');load();
-  };
+  },[channelId,projectId,load,isVisitor]);
 
   if(loading) return <div className="py-12 text-center text-sm font-mono" style={{color:'#6A6460'}}>loading…</div>;
-  if(!posts.length) return <div className="py-16 text-center text-sm font-mono" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:16,color:'#6A6460'}}>nothing here yet — be the first.</div>;
+  if(!posts.length) return (
+    <div className="py-16 text-center text-sm font-mono" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:16,color:'#6A6460'}}>
+      {isVisitor?'no public posts here yet.':'nothing here yet — be the first.'}
+    </div>
+  );
 
   return (
-    <>
-      <div className="space-y-4">
-        {posts.map(p=>(
-          <div key={p.id} className="relative group">
-            <PostCard post={p}/>
-            {(p.user_id===user?.id||isAdmin)&&(
-              <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                {p.user_id===user?.id&&<button onClick={()=>setEditingPost(p)} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10" style={{color:'#A09890'}}><Pencil className="h-3.5 w-3.5"/></button>}
-                <button onClick={()=>deletePost(p.id)} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-red-500/20" style={{color:'#A09890'}}><Trash2 className="h-3.5 w-3.5"/></button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <PostComposer open={!!editingPost} onOpenChange={o=>{if(!o)setEditingPost(null);}} editPost={editingPost} onCreated={()=>{setEditingPost(null);load();}}/>
-    </>
+    <div className="space-y-4">
+      {/* PostCard handles its own edit/delete/move via inline hover buttons */}
+      {posts.map(p=>(
+        <PostCard key={p.id} post={p} readOnly={isVisitor} onDeleted={()=>load()}/>
+      ))}
+    </div>
   );
 };
 
@@ -324,9 +311,9 @@ const ProjectModal = ({open,onOpenChange,onSaved,existing,nextSlot,parentProject
 const extractYtId=(url:string)=>{try{const u=new URL(url);return u.hostname.includes('youtu.be')?u.pathname.slice(1):u.searchParams.get('v')??'';}catch{return '';}};
 
 // ── Project View (recursive) ──────────────────────────────────
-const ProjectView = ({channel,project,onBack,onSelectSub,breadcrumb}:{
+const ProjectView = ({channel,project,onBack,onSelectSub,breadcrumb,isVisitor=false}:{
   channel:Channel;project:ChannelProject;onBack:()=>void;
-  onSelectSub:(p:ChannelProject)=>void;breadcrumb?:string;
+  onSelectSub:(p:ChannelProject)=>void;breadcrumb?:string;isVisitor?:boolean;
 }) => {
   const {isAdmin}=useAuth();
   const idx=Math.min((project.gradient_idx??project.slot_number-1),29);
@@ -427,8 +414,8 @@ const ProjectView = ({channel,project,onBack,onSelectSub,breadcrumb}:{
         </div>
       )}
 
-      <PostFeed channelId={channel.id} projectId={project.id}/>
-      <FloatingActions defaultChannelId={channel.id} defaultProjectId={project.id}/>
+      <PostFeed channelId={channel.id} projectId={project.id} isVisitor={isVisitor}/>
+      {!isVisitor&&<FloatingActions defaultChannelId={channel.id} defaultProjectId={project.id}/>}
       <ProjectModal open={showAddSub} onOpenChange={setShowAddSub} onSaved={()=>{setShowAddSub(false);loadSubs();}} nextSlot={nextSubSlot} parentProjectId={project.id}/>
       <ProjectModal open={!!editSub} onOpenChange={o=>{if(!o)setEditSub(null);}} onSaved={()=>{setEditSub(null);loadSubs();}} existing={editSub} nextSlot={nextSubSlot}/>
     </div>
@@ -514,7 +501,7 @@ const HubView = ({isAdmin,onInfoSkills,onAllProjects}:{isAdmin:boolean;onInfoSki
 };
 
 // ── Main Export ───────────────────────────────────────────────
-export const ProjectChannelPage = ({channel}:{channel:Channel}) => {
+export const ProjectChannelPage = ({channel,isVisitor=false}:{channel:Channel;isVisitor?:boolean}) => {
   const {isAdmin}=useAuth();
   type View='hub'|'info-skills'|'all-projects'|'project';
   const [history,setHistory]=useState<View[]>(['hub']);
@@ -533,12 +520,19 @@ export const ProjectChannelPage = ({channel}:{channel:Channel}) => {
   const parentName=projectStack.length>1?projectStack[projectStack.length-2].name:'all projects';
 
   if(view==='project'&&currentProject){
-    return <ProjectView channel={channel} project={currentProject} onBack={projectBack} onSelectSub={enterSubProject} breadcrumb={parentName}/>;
+    return <ProjectView channel={channel} project={currentProject} onBack={projectBack} onSelectSub={enterSubProject} breadcrumb={parentName} isVisitor={isVisitor}/>;
   }
   if(view==='info-skills') return <InfoSkillsView channel={channel} onBack={pop}/>;
-  if(view==='all-projects') return <AllProjectsView channel={channel} isAdmin={isAdmin} onSelectProject={enterProject} onBack={pop}/>;
+  if(view==='all-projects') return <AllProjectsView channel={channel} isAdmin={isAdmin&&!isVisitor} onSelectProject={enterProject} onBack={pop}/>;
 
   return (
-    <HubView isAdmin={isAdmin} onInfoSkills={()=>push('info-skills')} onAllProjects={()=>push('all-projects')}/>
+    <>
+      <HubView isAdmin={isAdmin&&!isVisitor} onInfoSkills={()=>push('info-skills')} onAllProjects={()=>push('all-projects')}/>
+      {isVisitor&&(
+        <p className="mt-6 text-[10px] font-mono uppercase tracking-wider text-center" style={{color:'#4A4A4A'}}>
+          read-only preview · <a href="/login" style={{color:'#E8734A'}}>join to post</a>
+        </p>
+      )}
+    </>
   );
 };
