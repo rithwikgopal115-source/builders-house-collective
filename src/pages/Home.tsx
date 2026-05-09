@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Navigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { FeedPost } from "@/components/PostCard";
-import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, ListChecks } from "lucide-react";
+import { Star, Zap, Lightbulb, Music, Briefcase, Trophy, ListChecks, Youtube, ChevronDown, ChevronUp } from "lucide-react";
 import { FloatingActions } from "@/components/FloatingActions";
 
 // Sharp Windows-Phone live tiles. Each channel has its own brand color + icon.
@@ -17,17 +17,88 @@ const TILES: Record<string, { bg: string; fg: string; icon: any; label: string; 
   "wins":      { bg: "#EA580C", fg: "#FFFFFF", icon: Trophy,      label: "wins", badge: "celebration" },
 };
 
+// Extract YouTube video ID from various URL formats
+const extractYtId = (url: string): string | null => {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+};
+
+// ─── Collapsible Intro Video ──────────────────────────────────────────────────
+const IntroVideo = ({ url }: { url: string }) => {
+  const [open, setOpen] = useState(false);
+  const ytId = extractYtId(url);
+
+  return (
+    <div
+      className="mb-4 overflow-hidden"
+      style={{
+        background: '#161616',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 12,
+        transition: 'all 0.2s',
+      }}
+    >
+      {/* Header toggle */}
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <Youtube className="h-4 w-4 flex-shrink-0" style={{ color: '#E8734A' }} />
+          <span className="text-sm font-medium" style={{ color: '#F5F0EB' }}>intro video</span>
+          <span className="text-xs font-mono" style={{ color: '#6A6460' }}>builders house</span>
+        </div>
+        {open
+          ? <ChevronUp className="h-4 w-4 flex-shrink-0" style={{ color: '#6A6460' }} />
+          : <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: '#6A6460' }} />}
+      </button>
+
+      {/* Video embed */}
+      {open && ytId && (
+        <div className="aspect-video w-full" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <iframe
+            src={`https://www.youtube.com/embed/${ytId}?autoplay=0&rel=0`}
+            title="Builders House intro"
+            className="w-full h-full"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      )}
+
+      {/* Fallback: not a YouTube URL */}
+      {open && !ytId && (
+        <div className="px-4 pb-4">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-mono underline"
+            style={{ color: '#E8734A' }}
+          >
+            {url}
+          </a>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 const Home = () => {
   const { profile, user, loading } = useAuth();
   const [postsByChannel, setPostsByChannel] = useState<Record<string, FeedPost[]>>({});
   const [unreadByChannel, setUnreadByChannel] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState({ members: 0, postsThisWeek: 0 });
+  const [introVideoUrl, setIntroVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "home — builders house";
     if (!profile?.is_approved) return;
 
     const load = async () => {
+      // Load posts
       const { data: posts } = await supabase
         .from("posts")
         .select("id, channel_id, user_id, title, content, type, url, visibility, created_at, is_pinned, channels!inner(slug, name), profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
@@ -51,21 +122,31 @@ const Home = () => {
       });
       setUnreadByChannel(unread);
 
+      // Stats
       const [{ count: members }, { count: weekPosts }] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("is_approved", true),
         supabase.from("posts").select("*", { count: "exact", head: true })
           .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()),
       ]);
       setStats({ members: members ?? 0, postsThisWeek: weekPosts ?? 0 });
+
+      // Fetch intro video from resources channel
+      const { data: resChannel } = await supabase
+        .from("channels")
+        .select("intro_video_url")
+        .eq("slug", "resources")
+        .maybeSingle();
+      setIntroVideoUrl((resChannel as any)?.intro_video_url ?? null);
     };
+
     load();
   }, [profile?.is_approved, user?.id]);
 
   if (loading || (user && !profile)) return (
-  <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#A09890" }}>
-    loading…
-  </div>
-);
+    <div className="min-h-screen flex items-center justify-center font-mono text-sm" style={{ background: "#0D0D0D", color: "#A09890" }}>
+      loading…
+    </div>
+  );
   if (!user) return <Navigate to="/login" replace />;
   if (profile && !profile.is_approved) return <Navigate to="/waiting" replace />;
 
@@ -83,6 +164,9 @@ const Home = () => {
             {stats.members} builders · {stats.postsThisWeek} posts this week
           </p>
         </header>
+
+        {/* Collapsible intro video */}
+        {introVideoUrl && <IntroVideo url={introVideoUrl} />}
 
         {/* Sharp bento — 2px gaps, 0 radius — Windows Phone */}
         <div className="grid grid-cols-2 md:grid-cols-3 auto-rows-[150px] md:auto-rows-[180px] gap-[2px]">
@@ -113,6 +197,7 @@ const Home = () => {
   );
 };
 
+// ─── Bento Tile ───────────────────────────────────────────────────────────────
 const BentoTile = ({ slug, preview, unread, className = "", big }: any) => {
   const cfg = TILES[slug];
   if (!cfg) return null;
@@ -134,7 +219,6 @@ const BentoTile = ({ slug, preview, unread, className = "", big }: any) => {
         </span>
       )}
 
-      {/* Unread dot — top-right, sits above badge slot */}
       {unread && !cfg.badge && (
         <span
           className="absolute top-3 right-3 h-2 w-2 rounded-full"
