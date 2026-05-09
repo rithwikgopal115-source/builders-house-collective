@@ -593,74 +593,175 @@ const AddEntityModal = ({open,onOpenChange,onSaved,existing}:{open:boolean;onOpe
   );
 };
 
-const EntityCard = ({entity,resources,isAdmin,onEdit,onDelete,onAddResource,onDeleteResource}:{
+// ── helpers ──────────────────────────────────────────────────
+const getYtId=(url:string)=>{try{const u=new URL(url);return u.hostname.includes('youtu.be')?u.pathname.slice(1):u.searchParams.get('v')??'';}catch{return '';}};
+const getYtThumb=(url:string)=>{const id=getYtId(url);return id?`https://img.youtube.com/vi/${id}/mqdefault.jpg`:null;};
+const RTYPE_ICON:Record<string,any>={yt_video:Youtube,google_doc:Globe,pdf:Globe,template:LayoutTemplate,github_repo:Github,prd:Globe,other:Globe,link:Globe};
+
+// ── ResourcePreview — auto-cycling fade preview on entity card ──
+const ResourcePreview=({resources,onClick}:{resources:EntityResource[];onClick:()=>void})=>{
+  const [idx,setIdx]=useState(0);
+  const [visible,setVisible]=useState(true);
+  useEffect(()=>{
+    if(resources.length<=1)return;
+    const t=setInterval(()=>{
+      setVisible(false);
+      setTimeout(()=>{setIdx(i=>(i+1)%resources.length);setVisible(true);},400);
+    },3000);
+    return()=>clearInterval(t);
+  },[resources.length]);
+  if(!resources.length) return(
+    <button onClick={onClick} className="w-full h-full flex items-center justify-center" style={{color:'#3A3A3A'}}>
+      <ExternalLink className="h-5 w-5"/>
+    </button>
+  );
+  const r=resources[idx%resources.length];
+  const thumb=r.resource_type==='yt_video'?getYtThumb(r.url):null;
+  const Icon=RTYPE_ICON[r.resource_type]??Globe;
+  return(
+    <button onClick={onClick} className="w-full h-full flex flex-col overflow-hidden" style={{transition:'opacity 0.4s',opacity:visible?1:0}}>
+      {thumb
+        ?<img src={thumb} alt={r.title||''} className="w-full h-full object-cover"/>
+        :<div className="w-full h-full flex flex-col items-center justify-center gap-2 px-3">
+          <Icon className="h-6 w-6" style={{color:'#E8734A'}}/>
+          <span className="text-[10px] font-mono text-center line-clamp-2" style={{color:'#A09890'}}>{r.title||r.url}</span>
+          <span className="text-[9px] font-mono uppercase" style={{color:'#4A4A4A'}}>{RESOURCE_TYPE_RMAP[r.resource_type]??r.resource_type}</span>
+        </div>
+      }
+    </button>
+  );
+};
+
+// ── EntityCard ────────────────────────────────────────────────
+const EntityCard=({entity,resources,isAdmin,onOpen,onEdit,onDelete}:{
   entity:Entity;resources:EntityResource[];isAdmin:boolean;
-  onEdit:()=>void;onDelete:()=>void;onAddResource:()=>void;onDeleteResource:(id:string)=>void;
-}) => {
-  const [expanded,setExpanded]=useState(false);
+  onOpen:()=>void;onEdit:()=>void;onDelete:()=>void;
+})=>{
   const sl=entity.social_links??{};
-  return (
-    <div className="overflow-hidden" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8}}>
-      <div className="flex">
-        <div className="flex-1 min-w-0 p-4" style={{borderRight:'1px solid rgba(255,255,255,0.06)'}}>
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div>
-              <p className="text-sm font-bold" style={{color:'#F5F0EB'}}>{entity.name}</p>
-              <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mt-0.5" style={{background:'rgba(232,115,74,0.12)',color:'#E8734A'}}>{entity.entity_type}</span>
-            </div>
-            {isAdmin&&(
-              <div className="flex gap-1 flex-shrink-0">
-                <button onClick={onEdit} className="h-6 w-6 flex items-center justify-center rounded hover:bg-white/10" style={{color:'#A09890'}}><Pencil className="h-3 w-3"/></button>
-                <button onClick={onDelete} className="h-6 w-6 flex items-center justify-center rounded hover:bg-red-500/20" style={{color:'#A09890'}}><Trash2 className="h-3 w-3"/></button>
-              </div>
-            )}
+  return(
+    <div className="overflow-hidden flex" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8,minHeight:130}}>
+      {/* Left: info */}
+      <button onClick={onOpen} className="flex-1 min-w-0 p-4 text-left hover:bg-white/[0.02] transition-colors" style={{borderRight:'1px solid rgba(255,255,255,0.06)'}}>
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div>
+            <p className="text-sm font-bold" style={{color:'#F5F0EB'}}>{entity.name}</p>
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mt-0.5" style={{background:'rgba(232,115,74,0.12)',color:'#E8734A'}}>{entity.entity_type}</span>
           </div>
-          {entity.bio&&<p className="text-xs mb-2 line-clamp-2" style={{color:'#8A8480'}}>{entity.bio}</p>}
-          {(entity.tags??[]).length>0&&(
-            <div className="flex flex-wrap gap-1 mb-2">
-              {(entity.tags??[]).map(t=><span key={t} className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(255,255,255,0.05)',color:'#8A8480'}}>{t}</span>)}
+          {isAdmin&&(
+            <div className="flex gap-1 flex-shrink-0" onClick={e=>e.stopPropagation()}>
+              <button onClick={onEdit} className="h-6 w-6 flex items-center justify-center rounded hover:bg-white/10" style={{color:'#A09890'}}><Pencil className="h-3 w-3"/></button>
+              <button onClick={onDelete} className="h-6 w-6 flex items-center justify-center rounded hover:bg-red-500/20" style={{color:'#A09890'}}><Trash2 className="h-3 w-3"/></button>
             </div>
           )}
-          <div className="flex gap-2 flex-wrap">
-            {Object.entries(sl).filter(([,v])=>v).map(([k,v])=>{const Icon=SOCIAL_ICONS[k]??Globe;return(
-              <a key={k} href={String(v).startsWith('http')?String(v):`https://twitter.com/${String(v).replace('@','')}`} target="_blank" rel="noreferrer" className="h-6 w-6 flex items-center justify-center rounded hover:bg-white/10" style={{color:'#A09890'}} title={k}>
-                <Icon className="h-3.5 w-3.5"/>
-              </a>
-            );})}
-          </div>
         </div>
-        <div className="w-52 flex-shrink-0 p-3">
-          <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{color:'#6A6460'}}>resources</p>
-          <div className="space-y-1.5">
-            {resources.slice(0,expanded?undefined:3).map(r=>(
-              <div key={r.id} className="flex items-center gap-1.5 group/res">
-                <a href={r.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 flex items-center gap-1.5 hover:opacity-80">
-                  <ExternalLink className="h-3 w-3 flex-shrink-0" style={{color:'#E8734A'}}/>
-                  <span className="text-xs truncate" style={{color:'#F5F0EB'}}>{r.title||r.url}</span>
-                  <span className="text-[9px] font-mono flex-shrink-0" style={{color:'#6A6460'}}>{RESOURCE_TYPE_RMAP[r.resource_type]??r.resource_type}</span>
-                </a>
-                {isAdmin&&<button onClick={()=>onDeleteResource(r.id)} className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover/res:opacity-100 hover:bg-red-500/20" style={{color:'#A09890'}}><X className="h-2.5 w-2.5"/></button>}
-              </div>
-            ))}
-            {resources.length>3&&<button onClick={()=>setExpanded(e=>!e)} className="text-[10px] font-mono" style={{color:'#6A6460'}}>{expanded?'show less':'+ '+(resources.length-3)+' more'}</button>}
-            {!resources.length&&<p className="text-[10px] font-mono" style={{color:'#4A4A4A'}}>no resources yet</p>}
+        {entity.bio&&<p className="text-xs mb-2 line-clamp-2" style={{color:'#8A8480'}}>{entity.bio}</p>}
+        {(entity.tags??[]).length>0&&(
+          <div className="flex flex-wrap gap-1 mb-2">
+            {(entity.tags??[]).map(t=><span key={t} className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(255,255,255,0.05)',color:'#8A8480'}}>{t}</span>)}
           </div>
-          {isAdmin&&<button onClick={onAddResource} className="mt-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 hover:opacity-80" style={{color:'#E8734A'}}><Plus className="h-3 w-3"/>add</button>}
+        )}
+        <div className="flex gap-2 flex-wrap mt-auto">
+          {Object.entries(sl).filter(([,v])=>v).map(([k,v])=>{const Icon=SOCIAL_ICONS[k]??Globe;return(
+            <span key={k} className="h-6 w-6 flex items-center justify-center rounded" style={{color:'#6A6460'}} title={k}><Icon className="h-3.5 w-3.5"/></span>
+          );})}
+          <span className="text-[10px] font-mono ml-auto self-end" style={{color:'#4A4A4A'}}>{resources.length} resource{resources.length!==1?'s':''} →</span>
         </div>
+      </button>
+      {/* Right: auto-cycling resource preview */}
+      <div className="w-40 flex-shrink-0 overflow-hidden" style={{background:'#0D0D0D'}}>
+        <ResourcePreview resources={resources} onClick={onOpen}/>
       </div>
     </div>
   );
 };
 
-const ExpertDirectoryView = ({onBack}:{onBack:()=>void}) => {
+// ── EntityDetailView — full entity page ───────────────────────
+const EntityDetailView=({entity,resources,isAdmin,onBack,onEdit,onAddResource,onDeleteResource}:{
+  entity:Entity;resources:EntityResource[];isAdmin:boolean;
+  onBack:()=>void;onEdit:()=>void;onAddResource:()=>void;onDeleteResource:(id:string)=>void;
+})=>{
+  const sl=entity.social_links??{};
+  return(
+    <div>
+      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-5 hover:text-primary" style={{color:'#A09890'}}><ArrowLeft className="h-3.5 w-3.5"/>back</button>
+      <div className="mb-6 p-5" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8}}>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-xl font-bold" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>{entity.name}</h2>
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mt-1" style={{background:'rgba(232,115,74,0.12)',color:'#E8734A'}}>{entity.entity_type}</span>
+          </div>
+          {isAdmin&&<Button onClick={onEdit} className="h-8 text-xs px-3">edit</Button>}
+        </div>
+        {entity.bio&&<p className="text-sm mb-3" style={{color:'#A09890'}}>{entity.bio}</p>}
+        {(entity.tags??[]).length>0&&(
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {(entity.tags??[]).map(t=><span key={t} className="text-[10px] font-mono px-2 py-0.5 rounded" style={{background:'rgba(255,255,255,0.05)',color:'#8A8480'}}>{t}</span>)}
+          </div>
+        )}
+        <div className="flex gap-3 flex-wrap">
+          {Object.entries(sl).filter(([,v])=>v).map(([k,v])=>{const Icon=SOCIAL_ICONS[k]??Globe;return(
+            <a key={k} href={String(v).startsWith('http')?String(v):`https://twitter.com/${String(v).replace('@','')}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-mono hover:opacity-80" style={{color:'#A09890'}}>
+              <Icon className="h-3.5 w-3.5"/>{k}
+            </a>
+          );})}
+        </div>
+      </div>
+
+      {/* Resources */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-mono uppercase tracking-wider" style={{color:'#6A6460'}}>resources · {resources.length}</p>
+        {isAdmin&&<button onClick={onAddResource} className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider hover:opacity-80" style={{color:'#E8734A'}}><Plus className="h-3 w-3"/>add resource</button>}
+      </div>
+      {!resources.length&&<div className="py-10 text-center text-sm font-mono" style={{color:'#4A4A4A'}}>no resources yet{isAdmin?' — add the first one above':''}</div>}
+      <div className="space-y-3">
+        {resources.map(r=>{
+          const isYt=r.resource_type==='yt_video';
+          const thumb=isYt?getYtThumb(r.url):null;
+          const Icon=RTYPE_ICON[r.resource_type]??Globe;
+          return(
+            <div key={r.id} className="overflow-hidden group/r" style={{background:'#161616',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8}}>
+              {isYt&&thumb&&(
+                <a href={r.url} target="_blank" rel="noreferrer" className="block relative overflow-hidden" style={{height:180}}>
+                  <img src={thumb} alt={r.title||''} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"/>
+                  <div className="absolute inset-0 flex items-center justify-center" style={{background:'rgba(0,0,0,0.3)'}}>
+                    <Youtube className="h-10 w-10" style={{color:'#fff',opacity:0.9}}/>
+                  </div>
+                </a>
+              )}
+              <div className="p-3 flex items-center gap-3">
+                {!isYt&&<div className="h-9 w-9 flex-shrink-0 flex items-center justify-center rounded" style={{background:'rgba(232,115,74,0.1)'}}><Icon className="h-4 w-4" style={{color:'#E8734A'}}/></div>}
+                <div className="flex-1 min-w-0">
+                  <a href={r.url} target="_blank" rel="noreferrer" className="text-sm font-medium hover:text-primary truncate block" style={{color:'#F5F0EB'}}>{r.title||r.url}</a>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] font-mono uppercase" style={{color:'#E8734A'}}>{RESOURCE_TYPE_RMAP[r.resource_type]??r.resource_type}</span>
+                    {r.notes&&<span className="text-[10px] font-mono truncate" style={{color:'#6A6460'}}>{r.notes}</span>}
+                  </div>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <a href={r.url} target="_blank" rel="noreferrer" className="h-7 w-7 flex items-center justify-center rounded hover:bg-white/10" style={{color:'#A09890'}}><ExternalLink className="h-3.5 w-3.5"/></a>
+                  {isAdmin&&<button onClick={()=>onDeleteResource(r.id)} className="h-7 w-7 flex items-center justify-center rounded opacity-0 group-hover/r:opacity-100 hover:bg-red-500/20" style={{color:'#A09890'}}><Trash2 className="h-3.5 w-3.5"/></button>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ── ExpertDirectoryView ───────────────────────────────────────
+const ExpertDirectoryView=({onBack}:{onBack:()=>void})=>{
   const {isAdmin}=useAuth();
   const [entities,setEntities]=useState<Entity[]>([]);
   const [resources,setResources]=useState<EntityResource[]>([]);
-  const [typeFilter,setTypeFilter]=useState('');
-  const [rtypeFilter,setRtypeFilter]=useState('');
+  // multi-select filters
+  const [typeFilters,setTypeFilters]=useState<string[]>([]);
+  const [rtypeFilters,setRtypeFilters]=useState<string[]>([]);
   const [addOpen,setAddOpen]=useState(false);
   const [editEntity,setEditEntity]=useState<Entity|null>(null);
   const [addResEntityId,setAddResEntityId]=useState<string|null>(null);
+  const [activeEntity,setActiveEntity]=useState<Entity|null>(null);
 
   const load=useCallback(async()=>{
     const [{data:e},{data:r}]=await Promise.all([
@@ -680,41 +781,68 @@ const ExpertDirectoryView = ({onBack}:{onBack:()=>void}) => {
     await supabase.from('entity_resources').delete().eq('id',id);load();
   };
 
+  // Fixed filter: multi-select, use RESOURCE_TYPE_MAP (label→db) for content filter
   const filtered=entities.filter(e=>{
-    if(typeFilter&&e.entity_type!==typeFilter)return false;
-    if(rtypeFilter){const er=resources.filter(r=>r.entity_id===e.id);if(!er.some(r=>RESOURCE_TYPE_RMAP[r.resource_type]===rtypeFilter))return false;}
+    if(typeFilters.length&&!typeFilters.includes(e.entity_type))return false;
+    if(rtypeFilters.length){
+      const er=resources.filter(r=>r.entity_id===e.id);
+      if(!er.some(r=>rtypeFilters.some(f=>RESOURCE_TYPE_MAP[f]===r.resource_type)))return false;
+    }
     return true;
   });
 
+  const toggleType=(t:string)=>setTypeFilters(f=>f.includes(t)?f.filter(x=>x!==t):[...f,t]);
+  const toggleRtype=(t:string)=>setRtypeFilters(f=>f.includes(t)?f.filter(x=>x!==t):[...f,t]);
+
   const Pill=({label,active,onClick}:{label:string;active:boolean;onClick:()=>void})=>(
-    <button onClick={onClick} className="text-xs font-mono px-2.5 py-1 rounded-full" style={{background:active?'#E8734A':'#1E1E1E',color:active?'#0D0D0D':'#A09890',border:`1px solid ${active?'#E8734A':'rgba(255,255,255,0.08)'}`}}>{label}</button>
+    <button onClick={onClick} className="text-xs font-mono px-2.5 py-1 rounded-full transition-all" style={{background:active?'#E8734A':'#1E1E1E',color:active?'#0D0D0D':'#A09890',border:`1px solid ${active?'#E8734A':'rgba(255,255,255,0.08)'}`}}>{label}</button>
   );
 
-  return (
+  // Detail page
+  if(activeEntity){
+    const er=resources.filter(r=>r.entity_id===activeEntity.id);
+    return(
+      <>
+        <EntityDetailView
+          entity={activeEntity} resources={er} isAdmin={isAdmin}
+          onBack={()=>setActiveEntity(null)}
+          onEdit={()=>setEditEntity(activeEntity)}
+          onAddResource={()=>setAddResEntityId(activeEntity.id)}
+          onDeleteResource={id=>{deleteResource(id);}}
+        />
+        <AddEntityModal open={!!editEntity} onOpenChange={o=>{if(!o)setEditEntity(null);}} onSaved={()=>{load();setActiveEntity(prev=>entities.find(e=>e.id===prev?.id)??prev);}} existing={editEntity}/>
+        {addResEntityId&&<AddEntityResourceModal entityId={addResEntityId} open={true} onOpenChange={o=>{if(!o)setAddResEntityId(null);}} onSaved={load}/>}
+      </>
+    );
+  }
+
+  return(
     <div>
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-5 hover:text-primary" style={{color:'#A09890'}}><ArrowLeft className="h-3.5 w-3.5"/>back</button>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold" style={{color:'#F5F0EB',letterSpacing:'-0.02em'}}>expert's judgement</h2>
         {isAdmin&&<Button onClick={()=>setAddOpen(true)} className="h-8 text-xs px-3">+ add entity</Button>}
       </div>
+
+      {/* Multi-select filters */}
       <div className="space-y-2 mb-5">
         <div className="flex flex-wrap gap-1.5 items-center">
           <span className="text-[10px] font-mono uppercase mr-1" style={{color:'#6A6460'}}>type</span>
-          <Pill label="all" active={!typeFilter} onClick={()=>setTypeFilter('')}/>
-          {ENTITY_TYPES.map(t=><Pill key={t} label={t} active={typeFilter===t} onClick={()=>setTypeFilter(typeFilter===t?'':t)}/>)}
+          <Pill label="all" active={typeFilters.length===0} onClick={()=>setTypeFilters([])}/>
+          {ENTITY_TYPES.map(t=><Pill key={t} label={t} active={typeFilters.includes(t)} onClick={()=>toggleType(t)}/>)}
         </div>
         <div className="flex flex-wrap gap-1.5 items-center">
           <span className="text-[10px] font-mono uppercase mr-1" style={{color:'#6A6460'}}>content</span>
-          <Pill label="all" active={!rtypeFilter} onClick={()=>setRtypeFilter('')}/>
-          {RESOURCE_TYPES.map(t=><Pill key={t} label={t} active={rtypeFilter===t} onClick={()=>setRtypeFilter(rtypeFilter===t?'':t)}/>)}
+          <Pill label="all" active={rtypeFilters.length===0} onClick={()=>setRtypeFilters([])}/>
+          {RESOURCE_TYPES.map(t=><Pill key={t} label={t} active={rtypeFilters.includes(t)} onClick={()=>toggleRtype(t)}/>)}
         </div>
       </div>
+
       {!filtered.length&&<div className="py-16 text-center text-sm font-mono" style={{color:'#4A4A4A'}}>{isAdmin?'no entities yet — add the first one above':'no entities yet.'}</div>}
       <div className="space-y-3">
         {filtered.map(e=>(
           <EntityCard key={e.id} entity={e} resources={resources.filter(r=>r.entity_id===e.id)} isAdmin={isAdmin}
-            onEdit={()=>setEditEntity(e)} onDelete={()=>deleteEntity(e.id)}
-            onAddResource={()=>setAddResEntityId(e.id)} onDeleteResource={deleteResource}/>
+            onOpen={()=>setActiveEntity(e)} onEdit={()=>setEditEntity(e)} onDelete={()=>deleteEntity(e.id)}/>
         ))}
       </div>
       <AddEntityModal open={addOpen||!!editEntity} onOpenChange={o=>{if(!o){setAddOpen(false);setEditEntity(null);}}} onSaved={load} existing={editEntity}/>
