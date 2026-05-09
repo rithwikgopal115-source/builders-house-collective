@@ -5,7 +5,7 @@
  * IMPORTANT: channel_projects has NO channel_id column — it is a global table.
  * All queries on channel_projects must NOT filter by channel_id.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { PostCard, FeedPost } from "@/components/PostCard";
@@ -242,11 +242,34 @@ const ProjectIdeasView = ({
   );
 };
 
+// ─── useStickyState — localStorage-backed state, survives iOS PWA background kills ──
+const STICKY_TTL = 30 * 60 * 1000;
+function useStickyState<T>(key: string, init: T): [T, (v: T | ((p: T) => T)) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return init;
+      const { __v, __t } = JSON.parse(raw);
+      if (Date.now() - __t > STICKY_TTL) { localStorage.removeItem(key); return init; }
+      return __v ?? init;
+    } catch { return init; }
+  });
+  const set = useCallback((v: T | ((p: T) => T)) => {
+    setVal(prev => {
+      const next = typeof v === 'function' ? (v as (p: T) => T)(prev) : v;
+      try { localStorage.setItem(key, JSON.stringify({ __v: next, __t: Date.now() })); } catch {}
+      return next;
+    });
+  }, [key]);
+  return [val, set];
+}
+
 // ─── Project Ideas Tab ────────────────────────────────────────────────────────
 const ProjectIdeasTab = ({ channel, isVisitor = false }: { channel: Channel; isVisitor?: boolean }) => {
   const { isAdmin } = useAuth();
   const [projects, setProjects] = useState<ChannelProject[]>([]);
-  const [selected, setSelected] = useState<ChannelProject | null>(null);
+  // localStorage-backed — survives tab switches and iOS background kills, scoped to channel
+  const [selected, setSelected] = useStickyState<ChannelProject | null>(`icpSel:${channel.id}`, null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>('all');
 
@@ -264,13 +287,25 @@ const ProjectIdeasTab = ({ channel, isVisitor = false }: { channel: Channel; isV
           .is('parent_project_id', null)
           .order('slot_number');
 
-    q.then(({ data }) =>
-      setProjects((data ?? []).filter((p: any) => p.project_type !== 'skill'))
-    );
+    q.then(({ data }) => {
+      const ps = (data ?? []).filter((p: any) => p.project_type !== 'skill');
+      setProjects(ps);
+      // Refresh saved selection with latest server data (name/desc may have changed)
+      setSelected(prev => {
+        if (!prev) return null;
+        return ps.find((p: any) => p.id === prev.id) ?? null;
+      });
+    });
   }, [isAdmin]);
 
+  const selectProject = (p: ChannelProject) => setSelected(p);
+  const deselectProject = () => {
+    setSelected(null);
+    try { localStorage.removeItem(`icpSel:${channel.id}`); } catch {}
+  };
+
   if (selected) return (
-    <ProjectIdeasView channel={channel} project={selected} onBack={() => setSelected(null)} isVisitor={isVisitor} />
+    <ProjectIdeasView channel={channel} project={selected} onBack={deselectProject} isVisitor={isVisitor} />
   );
 
   return (
@@ -311,7 +346,7 @@ const ProjectIdeasTab = ({ channel, isVisitor = false }: { channel: Channel; isV
         </div>
       </div>
 
-      <ProjectTileGrid projects={projects} onSelect={setSelected} />
+      <ProjectTileGrid projects={projects} onSelect={selectProject} />
     </div>
   );
 };
