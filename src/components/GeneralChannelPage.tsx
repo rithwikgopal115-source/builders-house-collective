@@ -9,7 +9,7 @@
  *                     → skills    → skill-detail
  *       → project (direct click)
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { PostCard, FeedPost } from "@/components/PostCard";
@@ -24,6 +24,34 @@ import {
   X, ChevronDown, ChevronUp, BookOpen, Cpu, Layers,
   LayoutTemplate, FileText, Send, Users,
 } from "lucide-react";
+
+// ─── useStickyState — localStorage-backed state that survives tab switches ────
+// Survives mobile browser tab suspensions (iOS PWA, Android Chrome background kill).
+// Auto-expires after TTL_MS of inactivity so stale nav state doesn't persist forever.
+const TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function useStickyState<T>(key: string, init: T): [T, (v: T | ((p: T) => T)) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return init;
+      const { __v, __t } = JSON.parse(raw);
+      if (Date.now() - __t > TTL_MS) { localStorage.removeItem(key); return init; }
+      return __v ?? init;
+    } catch { return init; }
+  });
+
+  const set = useCallback((v: T | ((p: T) => T)) => {
+    setVal(prev => {
+      const next = typeof v === 'function' ? (v as (p: T) => T)(prev) : v;
+      try { localStorage.setItem(key, JSON.stringify({ __v: next, __t: Date.now() })); } catch {}
+      return next;
+    });
+  }, [key]);
+
+  // Touch the timestamp on any set so expiry resets while actively using
+  return [val, set];
+}
 
 // ─── Types ────────────────────────────────────────────────────
 interface Channel { id: string; slug: string; name: string; description: string | null; }
@@ -789,10 +817,26 @@ const EntityResourceComposer=({entityId,allContentTypeLabels,allContentTypeMap,o
 })=>{
   const {user,profile}=useAuth();
   const [open,setOpen]=useState(false);
-  const [title,setTitle]=useState('');const [url,setUrl]=useState('');
-  const [rtype,setRtype]=useState(allContentTypeLabels[0]??'YT Video');
-  const [notes,setNotes]=useState('');const [vis,setVis]=useState('community');const [busy,setBusy]=useState(false);
+  // Draft persistence — survives tab switches / iOS background kills
+  const [title,setTitle]=useStickyState(`erTitle:${entityId}`,'');
+  const [url,setUrl]=useStickyState(`erUrl:${entityId}`,'');
+  const [notes,setNotes]=useStickyState(`erNotes:${entityId}`,'');
+  const [rtype,setRtype]=useStickyState(`erRtype:${entityId}`,allContentTypeLabels[0]??'YT Video');
+  const [vis,setVis]=useStickyState(`erVis:${entityId}`,'community');
+  const [busy,setBusy]=useState(false);
   const ytThumb=rtype==='YT Video'&&url?getYtThumb(url):null;
+
+  // Auto-open composer if there's a saved draft URL (user was mid-fill)
+  useEffect(()=>{ if(url.trim())setOpen(true); },[]);
+
+  const clearDraft=()=>{
+    setTitle('');setUrl('');setNotes('');
+    setRtype(allContentTypeLabels[0]??'YT Video');setVis('community');
+    // Remove from localStorage
+    ['erTitle','erUrl','erNotes','erRtype','erVis'].forEach(k=>{
+      try{localStorage.removeItem(`${k}:${entityId}`);}catch{}
+    });
+  };
 
   const save=async()=>{
     if(!url.trim()){toast.error('url required');return;}
@@ -806,7 +850,7 @@ const EntityResourceComposer=({entityId,allContentTypeLabels,allContentTypeMap,o
     });
     setBusy(false);
     if(error){toast.error(error.message);return;}
-    toast.success('posted');setTitle('');setUrl('');setNotes('');setOpen(false);onSaved();
+    toast.success('posted');clearDraft();setOpen(false);onSaved();
   };
 
   if(!open) return(
@@ -850,7 +894,8 @@ const EntityResourceComposer=({entityId,allContentTypeLabels,allContentTypeMap,o
         </div>
       </div>
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={()=>setOpen(false)} style={{color:'#A09890'}}>cancel</Button>
+        <Button variant="ghost" onClick={()=>{clearDraft();setOpen(false);}} style={{color:'#A09890'}}>discard</Button>
+        <Button variant="ghost" onClick={()=>setOpen(false)} style={{color:'#A09890'}}>close</Button>
         <Button onClick={save} disabled={busy} className="flex items-center gap-1.5">{busy?'posting…':<><Send className="h-3.5 w-3.5"/>post it</>}</Button>
       </div>
     </div>
@@ -1075,9 +1120,14 @@ const ExpertDirectoryView=({onBack,isVisitor=false}:{onBack:()=>void;isVisitor?:
   const [rtypeFilters,setRtypeFilters]=useState<string[]>([]);
   const [addOpen,setAddOpen]=useState(false);
   const [editEntity,setEditEntity]=useState<Entity|null>(null);
+  // Restore active entity ID from sessionStorage so returning from YouTube keeps you in the entity
+  const [activeEntityId,setActiveEntityId]=useState<string|null>(()=>{ try{return sessionStorage.getItem('bh_expert_entity');}catch{return null;} });
   const [activeEntity,setActiveEntity]=useState<Entity|null>(null);
   const [addEntityTypeOpen,setAddEntityTypeOpen]=useState(false);
   const [addContentTypeOpen,setAddContentTypeOpen]=useState(false);
+
+  const openEntity=(e:Entity)=>{ setActiveEntity(e); setActiveEntityId(e.id); try{sessionStorage.setItem('bh_expert_entity',e.id);}catch{} };
+  const closeEntity=()=>{ setActiveEntity(null); setActiveEntityId(null); ssDel('bh_expert_entity'); };
 
   const load=useCallback(async()=>{
     // Visitors: only see public entities + public resources
@@ -1357,9 +1407,12 @@ const HubView = ({isAdmin,onInfoSkills,onAllProjects}:{
 export const GeneralChannelPage = ({channel,isVisitor=false}:{channel:Channel;isVisitor?:boolean}) => {
   const {isAdmin}=useAuth();
   type View='hub'|'all-projects'|'info-skills'|'info-flow'|'expert'|'skills'|'project'|'skill-detail';
-  const [history,setHistory]=useState<View[]>(['hub']);
-  // projectStack supports 10-level deep recursive subproject navigation
-  const [projectStack,setProjectStack]=useState<ChannelProject[]>([]);
+
+  // Persist nav state in localStorage (survives iOS PWA background kills + tab switches).
+  // Keyed by channel.id so multiple channels never collide.
+  const [history,setHistory]=useStickyState<View[]>(`gcpH:${channel.id}`,['hub']);
+  const [projectStack,setProjectStack]=useStickyState<ChannelProject[]>(`gcpS:${channel.id}`,[]);
+
   const view=history[history.length-1];
   const push=(v:View)=>setHistory(h=>[...h,v]);
   const pop=()=>setHistory(h=>h.length>1?h.slice(0,-1):h);
