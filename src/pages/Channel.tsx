@@ -215,15 +215,59 @@ const ChannelPage = () => {
 
   if (!user || !isApproved) {
     if (!channel.is_public_visible) return <Navigate to="/" replace />;
+
+    // Shared visitor nav (no AppLayout — keep it minimal)
+    const VisitorNav = () => (
+      <nav style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="max-w-7xl mx-auto px-6 md:px-10 py-4 flex items-center justify-between">
+          <Link to="/" className="text-sm font-medium tracking-tight" style={{ color: "#F5F0EB" }}>← builders house</Link>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono uppercase tracking-wider hidden sm:block" style={{ color: "#6A6460" }}>read-only preview</span>
+            <Link to="/login" className="text-xs font-mono uppercase tracking-wider px-3 py-1.5 rounded-lg" style={{ background: "#E8734A", color: "#0D0D0D" }}>join</Link>
+          </div>
+        </div>
+      </nav>
+    );
+
+    // Hub channels — show full layout in visitor/read-only mode
+    if (GENERAL_HUB_SLUGS.includes(channel.slug)) {
+      return (
+        <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
+          <VisitorNav />
+          <div className="max-w-7xl mx-auto px-5 md:px-8 py-6">
+            <GeneralChannelPage channel={channel} isVisitor={true} />
+          </div>
+        </div>
+      );
+    }
+
+    if (IDEAS_CHANNEL_SLUGS.includes(channel.slug)) {
+      return (
+        <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
+          <VisitorNav />
+          <div className="max-w-7xl mx-auto px-5 md:px-8 py-6">
+            <IdeasChannelPage channel={channel} isVisitor={true} />
+          </div>
+        </div>
+      );
+    }
+
+    if (PROJECT_CHANNEL_SLUGS.includes(channel.slug)) {
+      return (
+        <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
+          <VisitorNav />
+          <div className="max-w-7xl mx-auto px-5 md:px-8 py-6">
+            <ProjectChannelPage channel={channel} isVisitor={true} />
+          </div>
+        </div>
+      );
+    }
+
+    // Flat-feed channels (ai-news, vibing, hiring) — show public posts
     const publicPosts = posts.filter((p) => p.visibility === "public");
     return (
       <div className="min-h-screen" style={{ background: "#0D0D0D" }}>
-        <nav style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="max-w-4xl mx-auto px-6 md:px-10 py-5 flex items-center justify-between">
-            <Link to={user ? "/home" : "/"} className="text-sm font-medium tracking-tight" style={{ color: "#F5F0EB" }}>← builders house</Link>
-            <Link to="/login" className="text-xs font-mono uppercase tracking-wider hover:text-primary" style={{ color: "#A09890" }}>login</Link>
-          </div>
-        </nav>
+        <VisitorNav />
         <div className="max-w-3xl mx-auto px-6 md:px-10 py-10">
           <header className="mb-8 flex items-start gap-4">
             <div className="h-12 w-12 flex items-center justify-center" style={{ background: iconCfg.color, borderRadius: 12 }}>
@@ -232,7 +276,7 @@ const ChannelPage = () => {
             <div>
               <h1 className="text-3xl font-medium tracking-tight" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>{channel.name.toLowerCase()}</h1>
               {channel.description && <p className="text-sm mt-2" style={{ color: "#A09890" }}>{channel.description}</p>}
-              <p className="text-[10px] font-mono uppercase tracking-wider mt-3" style={{ color: "#A09890" }}>public posts only · request access for full feed</p>
+              <p className="text-[10px] font-mono uppercase tracking-wider mt-3" style={{ color: "#A09890" }}>public posts only · join for full access</p>
             </div>
           </header>
           <div className="space-y-4">
@@ -394,21 +438,13 @@ const ChannelPage = () => {
                     </div>
                   )}
                   {visible.map((p) => (
-                    <div key={p.id} className="relative group">
-                      <PostCard post={p} onAdminRequestPublic={isAdmin ? requestPublic : undefined} />
-                      {(p.user_id === user?.id || isAdmin) && (
-                        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {p.user_id === user?.id && (
-                            <button onClick={() => setEditingPost(p)} className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-white/10" style={{ color: "#A09890" }}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <button onClick={() => deletePost(p.id)} className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-red-500/20" style={{ color: "#A09890" }}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    /* PostCard handles its own edit/delete/move via inline hover buttons */
+                    <PostCard
+                      key={p.id}
+                      post={p}
+                      onAdminRequestPublic={isAdmin ? requestPublic : undefined}
+                      onDeleted={() => load()}
+                    />
                   ))}
                 </TabsContent>
               </Tabs>
@@ -425,12 +461,6 @@ const ChannelPage = () => {
           accent={accent}
         />
 
-        <PostComposer
-          open={!!editingPost}
-          onOpenChange={(o) => { if (!o) setEditingPost(null); }}
-          editPost={editingPost}
-          onCreated={() => { setEditingPost(null); load(); }}
-        />
       </PageWrapper>
     </AppLayout>
   );
