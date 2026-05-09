@@ -42,6 +42,25 @@ interface EntityResource {
   url: string; resource_type: string; notes?: string | null; created_at: string;
 }
 
+// ─── Cascade delete helper ────────────────────────────────────
+// Recursively soft-deletes a project + all descendants + hard-deletes their posts
+const cascadeDeleteProject = async (projectId: string): Promise<void> => {
+  const collectDescendants = async (id: string): Promise<string[]> => {
+    const { data } = await supabase.from('channel_projects').select('id').eq('parent_project_id', id);
+    const childIds = (data ?? []).map((p: any) => p.id);
+    const nested = await Promise.all(childIds.map(collectDescendants));
+    return [...childIds, ...nested.flat()];
+  };
+  const descendantIds = await collectDescendants(projectId);
+  const allIds = [...descendantIds, projectId];
+  for (const id of allIds) {
+    await supabase.from('posts').delete().eq('project_id', id);
+  }
+  for (const id of allIds) {
+    await supabase.from('channel_projects').update({ is_active: false }).eq('id', id);
+  }
+};
+
 // ─── Constants ────────────────────────────────────────────────
 const ENTITY_TYPES = ['Company','Founder','Expert','Creator','Builder','Entrepreneur','Programmer','Researcher','Engine'];
 const RESOURCE_TYPES = ['YT Video','Google Doc','PDF','Template','GitHub Repo','PRD','Other'];
@@ -1053,7 +1072,7 @@ const SkillsView = ({channel,isAdmin,onSelectSkill,onBack}:{channel:Channel;isAd
   const used=skills.map(p=>p.slot_number);
   const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
   const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
-  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
+  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}" and all its sub-projects and posts?`))return;await cascadeDeleteProject(p.id);toast.success('deleted — all sub-projects and posts removed');load();};
 
   return (
     <div>
@@ -1127,7 +1146,7 @@ const AllProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{
   const used=projects.map(p=>p.slot_number);
   const nextSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!used.includes(n))??1;
   const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
-  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
+  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}" and all its sub-projects and posts?`))return;await cascadeDeleteProject(p.id);toast.success('deleted — all sub-projects and posts removed');load();};
 
   return (
     <div>
@@ -1172,7 +1191,7 @@ const HubView = ({isAdmin,onInfoSkills,onAllProjects}:{
     return ()=>{supabase.removeChannel(ch);};
   },[load]);
   const hide=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);toast.success(p.is_hidden?'visible':'hidden');load();};
-  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);toast.success('removed');load();};
+  const del=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}" and all its sub-projects and posts?`))return;await cascadeDeleteProject(p.id);toast.success('deleted — all sub-projects and posts removed');load();};
 
   return (
     <div className="space-y-6">
