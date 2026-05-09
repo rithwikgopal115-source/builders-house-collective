@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,10 +17,20 @@ import {
   X,
   Loader2,
   Plus,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
 } from "lucide-react";
 
 interface Channel { id: string; slug: string; name: string; }
-interface ChannelProject { id: string; slot_number: number; name: string; }
+interface ChannelProject {
+  id: string;
+  slot_number: number;
+  name: string;
+  project_type?: string | null;
+  parent_project_id?: string | null;
+}
 
 type PostType = "text" | "link" | "video" | "doc" | "pdf" | "template";
 
@@ -76,6 +86,225 @@ const PillStyle = (active: boolean): React.CSSProperties => ({
   transition: "all .15s",
 });
 
+// ─── Collapsible Project Tree ─────────────────────────────────────────────────
+interface TreeNode {
+  project: ChannelProject;
+  children: TreeNode[];
+}
+
+const buildTree = (projects: ChannelProject[]): { skillRoots: TreeNode[]; projectRoots: TreeNode[] } => {
+  const byId = new Map<string, TreeNode>();
+  for (const p of projects) byId.set(p.id, { project: p, children: [] });
+
+  const skillRoots: TreeNode[] = [];
+  const projectRoots: TreeNode[] = [];
+
+  for (const p of projects) {
+    const node = byId.get(p.id)!;
+    if (p.parent_project_id && byId.has(p.parent_project_id)) {
+      byId.get(p.parent_project_id)!.children.push(node);
+    } else {
+      if (p.project_type === 'skill') skillRoots.push(node);
+      else projectRoots.push(node);
+    }
+  }
+
+  return { skillRoots, projectRoots };
+};
+
+const TreeNodeRow = ({
+  node,
+  depth,
+  selectedId,
+  onSelect,
+  expanded,
+  onToggle,
+}: {
+  node: TreeNode;
+  depth: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
+}) => {
+  const hasChildren = node.children.length > 0;
+  const isOpen = expanded.has(node.project.id);
+  const isSelected = selectedId === node.project.id;
+
+  return (
+    <>
+      <div
+        className="flex items-center gap-1 w-full group"
+        style={{ paddingLeft: 8 + depth * 14 }}
+      >
+        {/* Expand / collapse button */}
+        {hasChildren ? (
+          <button
+            onClick={() => onToggle(node.project.id)}
+            className="flex-shrink-0 h-5 w-5 flex items-center justify-center rounded hover:bg-white/10"
+            style={{ color: '#6A6460' }}
+          >
+            {isOpen
+              ? <ChevronDown className="h-3 w-3" />
+              : <ChevronRight className="h-3 w-3" />}
+          </button>
+        ) : (
+          <span className="flex-shrink-0 w-5" />
+        )}
+
+        {/* Folder icon */}
+        <span className="flex-shrink-0" style={{ color: isSelected ? '#E8734A' : '#4A4A4A' }}>
+          {hasChildren && isOpen
+            ? <FolderOpen className="h-3.5 w-3.5" />
+            : <Folder className="h-3.5 w-3.5" />}
+        </span>
+
+        {/* Name button */}
+        <button
+          onClick={() => onSelect(node.project.id)}
+          className="flex-1 text-left px-2 py-1.5 rounded text-xs font-mono truncate hover:bg-white/5"
+          style={{
+            color: isSelected ? '#E8734A' : '#C0BBB6',
+            background: isSelected ? 'rgba(232,115,74,0.08)' : 'transparent',
+            fontWeight: isSelected ? 600 : 400,
+          }}
+        >
+          <span className="opacity-40 mr-1">{node.project.slot_number}</span>
+          {node.project.name}
+        </button>
+      </div>
+
+      {hasChildren && isOpen && node.children.map(child => (
+        <TreeNodeRow
+          key={child.project.id}
+          node={child}
+          depth={depth + 1}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          expanded={expanded}
+          onToggle={onToggle}
+        />
+      ))}
+    </>
+  );
+};
+
+const ProjectTree = ({
+  allProjects,
+  selectedId,
+  onSelect,
+}: {
+  allProjects: ChannelProject[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+}) => {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [rootsOpen, setRootsOpen] = useState({ projects: true, skills: false });
+
+  const { skillRoots, projectRoots } = useMemo(() => buildTree(allProjects), [allProjects]);
+
+  const toggle = (id: string) => setExpanded(s => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+
+  const SectionHeader = ({
+    label, open, onToggle, count,
+  }: {
+    label: string; open: boolean; onToggle: () => void; count: number;
+  }) => (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs font-mono uppercase tracking-wider hover:bg-white/5"
+      style={{ color: '#6A6460' }}
+    >
+      {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      {label}
+      <span className="ml-auto opacity-50">{count}</span>
+    </button>
+  );
+
+  return (
+    <div
+      className="rounded-lg overflow-hidden overflow-y-auto"
+      style={{
+        background: '#0D0D0D',
+        border: '1px solid rgba(255,255,255,0.06)',
+        maxHeight: 220,
+      }}
+    >
+      {/* General (no project) */}
+      <button
+        onClick={() => onSelect(null)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-mono hover:bg-white/5"
+        style={{
+          color: selectedId === null ? '#E8734A' : '#A09890',
+          background: selectedId === null ? 'rgba(232,115,74,0.08)' : 'transparent',
+          fontWeight: selectedId === null ? 600 : 400,
+          borderBottom: '1px solid rgba(255,255,255,0.04)',
+        }}
+      >
+        <Globe className="h-3.5 w-3.5 flex-shrink-0" />
+        General (no project)
+      </button>
+
+      {/* All Projects section */}
+      {projectRoots.length > 0 && (
+        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <SectionHeader
+            label="All Projects"
+            open={rootsOpen.projects}
+            count={projectRoots.length}
+            onToggle={() => setRootsOpen(s => ({ ...s, projects: !s.projects }))}
+          />
+          {rootsOpen.projects && projectRoots.map(node => (
+            <TreeNodeRow
+              key={node.project.id}
+              node={node}
+              depth={0}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              expanded={expanded}
+              onToggle={toggle}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Skill Acquisition section */}
+      {skillRoots.length > 0 && (
+        <div>
+          <SectionHeader
+            label="Skill Acquisition"
+            open={rootsOpen.skills}
+            count={skillRoots.length}
+            onToggle={() => setRootsOpen(s => ({ ...s, skills: !s.skills }))}
+          />
+          {rootsOpen.skills && skillRoots.map(node => (
+            <TreeNodeRow
+              key={node.project.id}
+              node={node}
+              depth={0}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              expanded={expanded}
+              onToggle={toggle}
+            />
+          ))}
+        </div>
+      )}
+
+      {allProjects.length === 0 && (
+        <div className="py-4 text-center text-xs font-mono" style={{ color: '#4A4A4A' }}>
+          no projects yet — admin can add them
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Main PostComposer ────────────────────────────────────────────────────────
 export const PostComposer = ({
   open,
   onOpenChange,
@@ -92,7 +321,7 @@ export const PostComposer = ({
 
   const [channels,     setChannels]     = useState<Channel[]>([]);
   const [channelId,    setChannelId]    = useState<string>(defaultChannelId ?? "");
-  const [projects,     setProjects]     = useState<ChannelProject[]>([]);
+  const [allProjects,  setAllProjects]  = useState<ChannelProject[]>([]);
   const [projectId,    setProjectId]    = useState<string | null>(defaultProjectId ?? null);
   const [title,        setTitle]        = useState("");
   const [content,      setContent]      = useState("");
@@ -111,7 +340,7 @@ export const PostComposer = ({
   const selectedChannel = channels.find((c) => c.id === channelId);
   const isProjectChannel = selectedChannel ? PROJECT_CHANNEL_SLUGS.includes(selectedChannel.slug) : false;
 
-  // ── Load channels ──────────────────────────────────────────
+  // ── Load channels ────────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.from("channels").select("id, slug, name").order("sort_order").then(({ data }) => {
       setChannels(data ?? []);
@@ -123,7 +352,7 @@ export const PostComposer = ({
   useEffect(() => { if (defaultChannelId) setChannelId(defaultChannelId); }, [defaultChannelId, open]);
   useEffect(() => { setProjectId(defaultProjectId ?? null); }, [defaultProjectId, open]);
 
-  // ── Pre-fill when in edit mode ─────────────────────────────
+  // ── Pre-fill when in edit mode ───────────────────────────────────────────────
   useEffect(() => {
     if (!editPost || !open) return;
     setTitle(editPost.title ?? "");
@@ -135,7 +364,7 @@ export const PostComposer = ({
     setIsResource(!!editPost.is_resource);
   }, [editPost, open]);
 
-  // ── Auto-resize textarea ───────────────────────────────────
+  // ── Auto-resize textarea ─────────────────────────────────────────────────────
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -145,19 +374,19 @@ export const PostComposer = ({
 
   useEffect(() => { autoResize(); }, [content, autoResize]);
 
-  // Load active projects whenever a project channel is selected
+  // ── Load ALL projects as a flat list (tree is built client-side) ─────────────
   useEffect(() => {
-    if (!isProjectChannel) { setProjects([]); return; }
+    if (!isProjectChannel) { setAllProjects([]); return; }
     supabase
       .from("channel_projects")
-      .select("id, slot_number, name, project_type")
+      .select("id, slot_number, name, project_type, parent_project_id")
       .eq("is_active", true)
       .eq("is_hidden", false)
       .order("slot_number")
-      .then(({ data }) => setProjects((data ?? []).filter((p: any) => p.project_type !== "skill")));
+      .then(({ data }) => setAllProjects(data ?? []));
   }, [isProjectChannel, channelId]);
 
-  // ── YouTube preview ────────────────────────────────────────
+  // ── YouTube preview ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (type !== "video" || !url.trim()) { setYtPreview(null); return; }
     const handle = setTimeout(async () => {
@@ -171,7 +400,7 @@ export const PostComposer = ({
     return () => clearTimeout(handle);
   }, [type, url]);
 
-  // ── Multi-image upload ─────────────────────────────────────
+  // ── Multi-image upload ───────────────────────────────────────────────────────
   const onImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length || !user) return;
@@ -189,10 +418,7 @@ export const PostComposer = ({
         .from("post-images")
         .upload(path, file, { upsert: false });
 
-      if (error) {
-        toast.error(`Image ${i + 1} failed: ${error.message}`);
-        continue;
-      }
+      if (error) { toast.error(`Image ${i + 1} failed: ${error.message}`); continue; }
 
       const { data } = supabase.storage.from("post-images").getPublicUrl(path);
       results.push(data.publicUrl);
@@ -201,8 +427,6 @@ export const PostComposer = ({
     setImageUrls((prev) => [...prev, ...results]);
     setUploading(false);
     setUploadingIdx(null);
-
-    // Reset file input so the same files can be re-selected if needed
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -210,10 +434,10 @@ export const PostComposer = ({
     setImageUrls((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // ── Derived ────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────────
   const isIdeasChannel = selectedChannel?.slug === "ideas";
 
-  // ── Reset ──────────────────────────────────────────────────
+  // ── Reset ────────────────────────────────────────────────────────────────────
   const reset = () => {
     setTitle(""); setContent(""); setUrl(""); setType("text");
     setVisibility("community"); setIsResource(!!defaultIsResource);
@@ -222,7 +446,7 @@ export const PostComposer = ({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // ── Submit (create or update) ──────────────────────────────
+  // ── Submit (create or update) ────────────────────────────────────────────────
   const submit = async () => {
     if (!user || !profile?.is_approved) { toast.error("only approved members can post"); return; }
     if (!content.trim() && !title.trim() && !url.trim() && !imageUrls.length) {
@@ -230,7 +454,7 @@ export const PostComposer = ({
     }
     setBusy(true);
 
-    // ── EDIT MODE ──────────────────────────────────────────────
+    // EDIT MODE
     if (isEditMode && editPost) {
       const { error } = await supabase.from("posts").update({
         title:       title.trim() || null,
@@ -244,9 +468,7 @@ export const PostComposer = ({
       setBusy(false);
       if (error) { toast.error(error.message); return; }
       toast.success("post updated");
-      reset();
-      onOpenChange(false);
-      onCreated?.();
+      reset(); onOpenChange(false); onCreated?.();
       return;
     }
 
@@ -256,15 +478,15 @@ export const PostComposer = ({
     const insertVisibility = isMemberRequestingPublic ? "community" : visibility;
 
     const { data: created, error } = await supabase.from("posts").insert({
-      channel_id:  channelId,
-      user_id:     user.id,
-      title:       title.trim() || null,
-      content:     content.trim(),
-      type:        dbType(type),
-      url:         url.trim() || null,
-      image_urls:  imageUrls.length ? imageUrls : [],
+      channel_id:    channelId,
+      user_id:       user.id,
+      title:         title.trim() || null,
+      content:       content.trim(),
+      type:          dbType(type),
+      url:           url.trim() || null,
+      image_urls:    imageUrls.length ? imageUrls : [],
       project_id:    isProjectChannel ? (projectId ?? null) : null,
-      idea_category: isIdeasChannel && projectId ? ideaCategory : (isIdeasChannel && !projectId ? ideaCategory : null),
+      idea_category: isIdeasChannel ? ideaCategory : null,
       visibility:    insertVisibility,
       is_resource:   isResource,
     }).select("id").maybeSingle();
@@ -278,9 +500,7 @@ export const PostComposer = ({
       const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
       if (admins?.length) {
         await supabase.from("notifications").insert(admins.map((a) => ({
-          recipient_id: a.id,
-          type: "public_request",
-          related_id: created.id,
+          recipient_id: a.id, type: "public_request", related_id: created.id,
           content: `${profile.display_name} wants to make a post public`,
         })));
       }
@@ -289,33 +509,24 @@ export const PostComposer = ({
       toast.success("posted");
     }
 
-    // ── Notify all members about the new post ──────────────
     if (created) {
       const channelName = selectedChannel?.name ?? "a channel";
       const { data: members } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("is_approved", true)
-        .neq("id", user.id);
+        .from("profiles").select("id").eq("is_approved", true).neq("id", user.id);
       if (members?.length) {
         await supabase.from("notifications").insert(
           members.map((m) => ({
-            recipient_id: m.id,
-            type: "new_post",
-            related_id: created.id,
+            recipient_id: m.id, type: "new_post", related_id: created.id,
             content: `${profile.display_name} posted in ${channelName}`,
           }))
         );
       }
     }
 
-    setBusy(false);
-    reset();
-    onOpenChange(false);
-    onCreated?.();
+    setBusy(false); reset(); onOpenChange(false); onCreated?.();
   };
 
-  // ── Render ─────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
       <DialogContent
@@ -389,7 +600,6 @@ export const PostComposer = ({
               images (optional · multiple allowed)
             </p>
 
-            {/* Uploaded thumbnails */}
             {imageUrls.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {imageUrls.map((src, idx) => (
@@ -413,11 +623,7 @@ export const PostComposer = ({
               </div>
             )}
 
-            {/* Add image button */}
-            <label
-              className="cursor-pointer inline-flex items-center gap-2 font-mono"
-              style={PillStyle(false)}
-            >
+            <label className="cursor-pointer inline-flex items-center gap-2 font-mono" style={PillStyle(false)}>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -441,43 +647,28 @@ export const PostComposer = ({
             </label>
           </div>
 
-          {/* ── Project picker (resources / ideas / wins only, not in edit mode) ── */}
+          {/* ── Project tree (resources / ideas / wins only, not in edit mode) ── */}
           {isProjectChannel && !isEditMode && (
             <div>
               <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>
                 project
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                {/* General option */}
-                <button
-                  onClick={() => setProjectId(null)}
-                  className="flex items-center gap-1.5 font-mono"
-                  style={PillStyle(projectId === null)}
-                >
-                  General
-                </button>
-                {projects.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setProjectId(p.id)}
-                    className="flex items-center gap-1.5 font-mono"
-                    style={PillStyle(projectId === p.id)}
-                  >
-                    <span
-                      className="text-[10px] font-mono opacity-60 mr-0.5"
-                      style={{ letterSpacing: '-0.02em' }}
-                    >
-                      {p.slot_number}
-                    </span>
-                    {p.name}
-                  </button>
-                ))}
-                {projects.length === 0 && (
-                  <span className="text-xs font-mono" style={{ color: "#6A6460" }}>
-                    no projects yet — admin can add them
+              <ProjectTree
+                allProjects={allProjects}
+                selectedId={projectId}
+                onSelect={setProjectId}
+              />
+              {projectId && (
+                <p className="mt-1.5 text-[10px] font-mono" style={{ color: '#6A6460' }}>
+                  posting into: <span style={{ color: '#E8734A' }}>
+                    {allProjects.find(p => p.id === projectId)?.name ?? projectId}
                   </span>
-                )}
-              </div>
+                  {' '}·{' '}
+                  <button onClick={() => setProjectId(null)} className="underline hover:text-primary" style={{ color: '#6A6460' }}>
+                    clear
+                  </button>
+                </p>
+              )}
             </div>
           )}
 
@@ -489,7 +680,6 @@ export const PostComposer = ({
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {projectId ? (
-                  // In a project: show idea categories
                   [
                     { k: null,                 l: "general" },
                     { k: "ai-foundations",     l: "AI Foundations" },
@@ -503,11 +693,10 @@ export const PostComposer = ({
                     <button key={String(k)} onClick={() => setIdeaCategory(k)} className="font-mono" style={PillStyle(ideaCategory === k)}>{l}</button>
                   ))
                 ) : (
-                  // No project: new project idea or random
                   [
-                    { k: null,            l: "general" },
-                    { k: "new-project",   l: "New Project Idea" },
-                    { k: "random",        l: "Random" },
+                    { k: null,          l: "general" },
+                    { k: "new-project", l: "New Project Idea" },
+                    { k: "random",      l: "Random" },
                   ].map(({ k, l }) => (
                     <button key={String(k)} onClick={() => setIdeaCategory(k)} className="font-mono" style={PillStyle(ideaCategory === k)}>{l}</button>
                   ))
