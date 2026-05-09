@@ -83,16 +83,15 @@ const PillIdle: React.CSSProperties = {
 
 // ─── Idea Post Feed ───────────────────────────────────────────────────────────
 const IdeaFeed = ({
-  channelId, projectId, ideaCategory,
+  channelId, projectId, ideaCategory, isVisitor = false,
 }: {
   channelId: string;
   projectId?: string | null;
   ideaCategory?: string | null;
+  isVisitor?: boolean;
 }) => {
-  const { user, isAdmin } = useAuth();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingPost, setEditingPost] = useState<FeedPost | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,28 +110,22 @@ const IdeaFeed = ({
       if (ideaCategory === null) q = q.is('idea_category', null);
       else q = q.eq('idea_category', ideaCategory);
     }
+    if (isVisitor) q = q.eq('visibility', 'public');
     const { data } = await q;
     setPosts((data ?? []).map((p: any) => ({ ...p, author: p.profiles })));
     setLoading(false);
-  }, [channelId, projectId, ideaCategory]);
+  }, [channelId, projectId, ideaCategory, isVisitor]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    if (isVisitor) return;
     const ch = supabase
       .channel(`ideas:${channelId}:${String(projectId)}:${String(ideaCategory)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts', filter: `channel_id=eq.${channelId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [channelId, projectId, ideaCategory, load]);
-
-  const deletePost = async (id: string) => {
-    if (!window.confirm('delete this idea?')) return;
-    const { error } = await supabase.from('posts').delete().eq('id', id);
-    if (error) { toast.error(error.message); return; }
-    toast.success('deleted');
-    load();
-  };
+  }, [channelId, projectId, ideaCategory, load, isVisitor]);
 
   if (loading) return (
     <div className="py-12 text-center text-sm font-mono" style={{ color: '#6A6460' }}>loading…</div>
@@ -140,41 +133,18 @@ const IdeaFeed = ({
   if (!posts.length) return (
     <div className="py-12 text-center text-sm font-mono"
       style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, color: '#6A6460' }}>
-      no ideas here yet.
+      {isVisitor ? 'no public ideas here yet.' : 'no ideas here yet.'}
     </div>
   );
 
   return (
     <>
       <div className="space-y-4">
+        {/* PostCard handles its own edit/delete/move via inline hover buttons */}
         {posts.map(p => (
-          <div key={p.id} className="relative group">
-            <PostCard post={p} />
-            {(p.user_id === user?.id || isAdmin) && (
-              <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                {p.user_id === user?.id && (
-                  <button onClick={() => setEditingPost(p)}
-                    className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10"
-                    style={{ color: '#A09890' }} title="edit">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <button onClick={() => deletePost(p.id)}
-                  className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-red-500/20"
-                  style={{ color: '#A09890' }} title="delete">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
+          <PostCard key={p.id} post={p} readOnly={isVisitor} onDeleted={() => load()} />
         ))}
       </div>
-      <PostComposer
-        open={!!editingPost}
-        onOpenChange={o => { if (!o) setEditingPost(null); }}
-        editPost={editingPost}
-        onCreated={() => { setEditingPost(null); load(); }}
-      />
     </>
   );
 };
@@ -221,11 +191,12 @@ const ProjectTileGrid = ({
 
 // ─── Project Ideas View (inside a project, with category sub-tabs) ────────────
 const ProjectIdeasView = ({
-  channel, project, onBack,
+  channel, project, onBack, isVisitor = false,
 }: {
   channel: Channel;
   project: ChannelProject;
   onBack: () => void;
+  isVisitor?: boolean;
 }) => {
   const [catFilter, setCatFilter] = useState<string | null>(null);
 
@@ -264,14 +235,15 @@ const ProjectIdeasView = ({
         channelId={channel.id}
         projectId={project.id}
         ideaCategory={catFilter !== null ? catFilter : undefined}
+        isVisitor={isVisitor}
       />
-      <FloatingActions defaultChannelId={channel.id} defaultProjectId={project.id} />
+      {!isVisitor && <FloatingActions defaultChannelId={channel.id} defaultProjectId={project.id} />}
     </div>
   );
 };
 
 // ─── Project Ideas Tab ────────────────────────────────────────────────────────
-const ProjectIdeasTab = ({ channel }: { channel: Channel }) => {
+const ProjectIdeasTab = ({ channel, isVisitor = false }: { channel: Channel; isVisitor?: boolean }) => {
   const { isAdmin } = useAuth();
   const [projects, setProjects] = useState<ChannelProject[]>([]);
   const [selected, setSelected] = useState<ChannelProject | null>(null);
@@ -298,7 +270,7 @@ const ProjectIdeasTab = ({ channel }: { channel: Channel }) => {
   }, [isAdmin]);
 
   if (selected) return (
-    <ProjectIdeasView channel={channel} project={selected} onBack={() => setSelected(null)} />
+    <ProjectIdeasView channel={channel} project={selected} onBack={() => setSelected(null)} isVisitor={isVisitor} />
   );
 
   return (
@@ -345,7 +317,7 @@ const ProjectIdeasTab = ({ channel }: { channel: Channel }) => {
 };
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
-export const IdeasChannelPage = ({ channel }: { channel: Channel }) => {
+export const IdeasChannelPage = ({ channel, isVisitor = false }: { channel: Channel; isVisitor?: boolean }) => {
   return (
     <div>
       <Tabs defaultValue="all">
@@ -360,24 +332,29 @@ export const IdeasChannelPage = ({ channel }: { channel: Channel }) => {
         </TabsList>
 
         <TabsContent value="all">
-          <IdeaFeed channelId={channel.id} />
-          <FloatingActions defaultChannelId={channel.id} />
+          <IdeaFeed channelId={channel.id} isVisitor={isVisitor} />
+          {!isVisitor && <FloatingActions defaultChannelId={channel.id} />}
         </TabsContent>
 
         <TabsContent value="project-ideas">
-          <ProjectIdeasTab channel={channel} />
+          <ProjectIdeasTab channel={channel} isVisitor={isVisitor} />
         </TabsContent>
 
         <TabsContent value="new-projects">
-          <IdeaFeed channelId={channel.id} projectId={null} ideaCategory="new-project" />
-          <FloatingActions defaultChannelId={channel.id} />
+          <IdeaFeed channelId={channel.id} projectId={null} ideaCategory="new-project" isVisitor={isVisitor} />
+          {!isVisitor && <FloatingActions defaultChannelId={channel.id} />}
         </TabsContent>
 
         <TabsContent value="random">
-          <IdeaFeed channelId={channel.id} projectId={null} ideaCategory="random" />
-          <FloatingActions defaultChannelId={channel.id} />
+          <IdeaFeed channelId={channel.id} projectId={null} ideaCategory="random" isVisitor={isVisitor} />
+          {!isVisitor && <FloatingActions defaultChannelId={channel.id} />}
         </TabsContent>
       </Tabs>
+      {isVisitor && (
+        <p className="mt-4 text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: '#4A4A4A' }}>
+          read-only preview · <a href="/login" style={{ color: '#E8734A' }}>join to post</a>
+        </p>
+      )}
     </div>
   );
 };
