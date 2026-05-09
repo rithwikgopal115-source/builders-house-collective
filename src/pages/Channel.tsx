@@ -96,6 +96,8 @@ const ChannelPage = () => {
   const [channelIntroCollapsed, setChannelIntroCollapsed] = useState(false);
   const [slideDir, setSlideDir] = useState<'right' | 'left'>('right');
   const touchStartX = useRef(0);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const prevSlugRef = useRef<string>(slug ?? '');
 
   const isApproved = !!profile?.is_approved;
   const accent = CHANNEL_ACCENT[slug ?? ""] ?? "#E8734A";
@@ -113,8 +115,7 @@ const ChannelPage = () => {
     setChannel(ch);
     document.title = `${ch.name.toLowerCase()} — builders house`;
 
-    if ([...PROJECT_CHANNEL_SLUGS, ...GENERAL_HUB_SLUGS, ...IDEAS_CHANNEL_SLUGS].includes(ch.slug)) return;
-
+    // Always load posts — even for hub channels — so visitor view has content
     const { data: ps } = await supabase
       .from("posts")
       .select("id, channel_id, user_id, title, content, type, url, image_urls, visibility, created_at, is_pinned, is_resource, profiles!posts_user_id_fkey(id, display_name, avatar_url, is_admin)")
@@ -126,6 +127,18 @@ const ChannelPage = () => {
   }, [slug, loading]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Trigger slide animation on slug change without remounting children (avoids flicker)
+  useEffect(() => {
+    if (prevSlugRef.current && prevSlugRef.current !== slug && contentRef.current) {
+      const el = contentRef.current;
+      const anim = slideDir === 'left' ? 'channelSlideInLeft' : 'channelSlideInRight';
+      el.style.animation = 'none';
+      void el.offsetWidth; // force reflow
+      el.style.animation = `${anim} 0.28s cubic-bezier(0.22,1,0.36,1)`;
+    }
+    prevSlugRef.current = slug ?? '';
+  }, [slug]);
 
   useEffect(() => {
     if (!channel) return;
@@ -279,36 +292,30 @@ const ChannelPage = () => {
     </header>
   );
 
-  // Shared page wrapper with gradient overlay + swipe + slide animation
+  // Shared page wrapper with gradient overlay + swipe + smooth slide animation
+  // Uses a ref-based CSS approach — NO key remounting — so children never flicker
   const PageWrapper = ({ children }: { children: React.ReactNode }) => (
     <div
       className="relative min-h-screen"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Gradient overlay per channel — transitions smoothly on slug change */}
+      {/* Gradient overlay — transitions color smoothly */}
       <div
         className="fixed inset-0 pointer-events-none"
         style={{ background: channelGradient, zIndex: 0, transition: "background 0.5s ease" }}
       />
-      {/* key={slug} forces remount → triggers slide-in animation on channel switch */}
-      <div
-        key={slug}
-        className="relative"
-        style={{
-          zIndex: 1,
-          animation: `channelSlideIn${slideDir === 'left' ? 'Left' : 'Right'} 0.28s cubic-bezier(0.22,1,0.36,1)`,
-        }}
-      >
+      {/* Content — animation is applied via ref in useEffect, no remounting */}
+      <div ref={contentRef} className="relative" style={{ zIndex: 1 }}>
         {children}
       </div>
       <style>{`
         @keyframes channelSlideInRight {
-          from { opacity: 0; transform: translateX(-32px); }
+          from { opacity: 0; transform: translateX(-28px); }
           to   { opacity: 1; transform: translateX(0); }
         }
         @keyframes channelSlideInLeft {
-          from { opacity: 0; transform: translateX(32px); }
+          from { opacity: 0; transform: translateX(28px); }
           to   { opacity: 1; transform: translateX(0); }
         }
       `}</style>
@@ -324,7 +331,7 @@ const ChannelPage = () => {
             <ChannelPageHeader />
             <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
               <GeneralChannelPage channel={channel} />
-              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} key={slug} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
             </div>
           </div>
         </PageWrapper>
@@ -340,7 +347,7 @@ const ChannelPage = () => {
             <ChannelPageHeader />
             <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
               <IdeasChannelPage channel={channel} />
-              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} key={slug} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
             </div>
           </div>
         </PageWrapper>
@@ -356,7 +363,7 @@ const ChannelPage = () => {
             <ChannelPageHeader />
             <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
               <ProjectChannelPage channel={channel} />
-              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} key={slug} />
+              <ChannelChat channelId={channel.id} channelName={channel.name} accent={accent} />
             </div>
           </div>
         </PageWrapper>
