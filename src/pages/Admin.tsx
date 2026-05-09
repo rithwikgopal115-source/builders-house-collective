@@ -1,853 +1,770 @@
-import { useEffect, useState, useRef } from "react";
-import { AppLayout } from "@/components/AppLayout";
-import { useAuth } from "@/context/AuthContext";
-import { Navigate } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { AvatarBlock } from "./AvatarBlock";
+import {
+  MessageCircle, ExternalLink, Globe, Pin, Play, Heart, UserX,
+  Pencil, Trash2, MoveRight, X, ChevronRight,
+} from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "./ui/button";
 import { toast } from "sonner";
-import { AvatarBlock } from "@/components/AvatarBlock";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MessageSquare, Zap, Send, ChevronDown, ChevronUp, Youtube, Globe, Lock, Eye, EyeOff, Shield, ShieldOff, Settings2 } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 
-// ─── Shared pill button ───────────────────────────────────────────────────────
-const PillBtn = ({
-  variant, onClick, children, icon: Icon,
-}: { variant: "primary" | "ghost"; onClick: () => void; children: React.ReactNode; icon?: any }) => (
-  <button
-    onClick={onClick}
-    className="inline-flex items-center gap-1 font-mono transition-opacity hover:opacity-90"
-    style={{
-      background: variant === "primary" ? "#E8734A" : "#1E1E1E",
-      color: variant === "primary" ? "#0D0D0D" : "#F5F0EB",
-      border: variant === "primary" ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
-      borderRadius: 999,
-      padding: "4px 14px",
-      fontSize: 12,
-    }}
-  >
-    {Icon && <Icon className="h-3 w-3 mr-0.5" />}
-    {children}
-  </button>
-);
+export interface FeedPost {
+  id: string;
+  channel_id: string;
+  project_id?: string | null;
+  user_id: string;
+  title: string | null;
+  content: string;
+  type: "text" | "link" | "video" | "doc" | string | null;
+  url: string | null;
+  image_urls?: string[] | null;
+  visibility?: "community" | "public" | "private" | string | null;
+  is_resource?: boolean | null;
+  created_at: string;
+  is_pinned?: boolean | null;
+  author?: {
+    id?: string;
+    display_name: string;
+    avatar_url: string | null;
+    is_admin?: boolean | null;
+  } | null;
+  reaction_count?: number;
+  comment_count?: number;
+  channel?: { slug: string; name: string } | null;
+}
 
-const ToggleRow = ({
-  label, sublabel, checked, onChange,
-}: { label: string; sublabel?: string; checked: boolean; onChange: (v: boolean) => void }) => (
-  <div className="flex items-center justify-between py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-    <div>
-      <p className="text-sm" style={{ color: "#F5F0EB" }}>{label}</p>
-      {sublabel && <p className="text-[11px] font-mono mt-0.5" style={{ color: "#6A6460" }}>{sublabel}</p>}
-    </div>
-    <Switch checked={checked} onCheckedChange={onChange} />
-  </div>
-);
+const EMOJIS = ["🔥", "💯", "🧠", "👀", "🙌"];
 
-// ─── Main Admin ───────────────────────────────────────────────────────────────
-const Admin = () => {
-  const { isAdmin, loading, user } = useAuth();
-  const [requests, setRequests]   = useState<any[]>([]);
-  const [members, setMembers]     = useState<any[]>([]);
-  const [channels, setChannels]   = useState<any[]>([]);
-  const [projects, setProjects]   = useState<any[]>([]);
-  const [filter, setFilter]       = useState<"all" | "pending" | "approved" | "rejected" | "yolo">("pending");
-  const [credentialModal, setCredentialModal] = useState<{ email: string; password: string } | null>(null);
-  const [yoloMode, setYoloMode]           = useState(false);
-  const [dmRequest, setDmRequest]         = useState<any>(null);
-  const [permissionsMember, setPermissionsMember] = useState<any>(null);
-
-  const loadAll = async () => {
-    const [{ data: r }, { data: m }, { data: c }, { data: s }, { data: p }] = await Promise.all([
-      supabase.from("access_requests").select("*").order("created_at", { ascending: false }),
-      supabase.from("profiles").select("*").eq("is_approved", true).order("created_at", { ascending: false }),
-      supabase.from("channels").select("id, slug, name, is_public_visible, intro_video_url, sort_order").order("sort_order"),
-      supabase.from("admin_settings").select("auto_yolo_enabled").eq("id", 1).maybeSingle(),
-      supabase.from("channel_projects")
-        .select("*")
-        .eq("is_active", true)
-        .is("parent_project_id", null)
-        .order("slot_number"),
-    ]);
-    setRequests(r ?? []);
-    setMembers(m ?? []);
-    setChannels(c ?? []);
-    setYoloMode(!!s?.auto_yolo_enabled);
-    setProjects(p ?? []);
-  };
-
-  useEffect(() => { document.title = "admin — builders house"; if (isAdmin) loadAll(); }, [isAdmin]);
-
-  if (loading) return null;
-  if (!isAdmin) return <Navigate to="/home" replace />;
-
-  const toggleYolo = async (val: boolean) => {
-    setYoloMode(val);
-    const { error } = await supabase.from("admin_settings").update({ auto_yolo_enabled: val, updated_at: new Date().toISOString() }).eq("id", 1);
-    if (error) { toast.error(error.message); setYoloMode(!val); return; }
-    toast.success(val ? "auto yolo is live" : "back to manual review");
-  };
-
-  const yoloOnboard = async (request: any) => {
-    const { data, error } = await supabase.functions.invoke("yolo-onboard", {
-      body: { request_id: request.id, name: request.name, email: request.email, what_building: request.what_building, manual: true },
-    });
-    if (error) { toast.error(error.message); return; }
-    if (data?.error) { toast.error(data.error); return; }
-    if (data?.password) setCredentialModal({ email: request.email, password: data.password });
-    loadAll();
-  };
-
-  const reject = async (request: any) => {
-    if (!confirm("reject this application?")) return;
-    await supabase.from("access_requests").update({ status: "rejected" }).eq("id", request.id);
-    toast.success("rejected");
-    loadAll();
-  };
-
-  const removeMember = async (id: string) => {
-    if (!confirm("remove this builder? they lose access.")) return;
-    await supabase.from("profiles").update({ is_approved: false }).eq("id", id);
-    toast.success("removed");
-    loadAll();
-  };
-
-  const toggleAdmin = async (id: string, current: boolean) => {
-    if (!confirm(`${current ? "remove" : "grant"} admin access for this member?`)) return;
-    await supabase.from("profiles").update({ is_admin: !current }).eq("id", id);
-    toast.success(current ? "admin access removed" : "admin access granted");
-    loadAll();
-  };
-
-  const filtered = requests.filter((r) => {
-    if (filter === "all") return true;
-    if (filter === "yolo") return r.onboard_path === "yolo" || r.onboard_path === "manual_yolo";
-    return r.status === filter;
-  });
-
-  return (
-    <AppLayout>
-      <div className="max-w-6xl mx-auto px-5 md:px-8 py-6 pb-32">
-        <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
-          <h1 className="text-2xl font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>admin</h1>
-          <div
-            className="flex flex-col gap-1 px-4 py-3 transition-all"
-            style={{
-              background: "#161616",
-              border: yoloMode ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
-              borderRadius: 12,
-              boxShadow: yoloMode ? "0 0 16px rgba(232,115,74,0.4)" : "none",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium" style={{ color: yoloMode ? "#E8734A" : "#F5F0EB" }}>
-                {yoloMode ? "auto yolo is live" : "auto yolo mode"}
-              </span>
-              <Switch checked={yoloMode} onCheckedChange={toggleYolo} />
-            </div>
-            <p className="text-[11px] font-mono" style={{ color: "#A09890" }}>
-              {yoloMode
-                ? "open doors — anyone who says they're cool gets in instantly."
-                : "standard flow — you review every request manually."}
-            </p>
-          </div>
-        </div>
-
-        <Tabs defaultValue="requests">
-          <TabsList className="mb-6" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <TabsTrigger value="requests">
-              requests ({requests.filter(r => r.status === "pending").length})
-            </TabsTrigger>
-            <TabsTrigger value="members">members ({members.length})</TabsTrigger>
-            <TabsTrigger value="channels">channels</TabsTrigger>
-            <TabsTrigger value="projects">projects</TabsTrigger>
-          </TabsList>
-
-          {/* ── Requests ── */}
-          <TabsContent value="requests" className="space-y-0">
-            <div className="flex gap-1.5 mb-4 flex-wrap">
-              {(["all", "pending", "approved", "rejected", "yolo"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className="font-mono transition-colors"
-                  style={{
-                    background: filter === f ? "#E8734A" : "#1E1E1E",
-                    color: filter === f ? "#0D0D0D" : "#A09890",
-                    border: filter === f ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 999,
-                    padding: "4px 12px",
-                    fontSize: 11,
-                  }}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-
-            {filtered.length === 0 && (
-              <p className="text-sm font-mono" style={{ color: "#A09890" }}>no requests in this filter</p>
-            )}
-
-            <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden" }}>
-              {filtered.map((r) => (
-                <div
-                  key={r.id}
-                  className="px-5 py-4 flex flex-wrap items-start gap-3 justify-between"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                >
-                  <div className="flex-1 min-w-[200px]">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="font-medium" style={{ color: "#F5F0EB" }}>{r.name}</span>
-                      <span className="text-xs font-mono" style={{ color: "#A09890" }}>{r.email}</span>
-                      {r.onboard_path === "yolo" && (
-                        <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#2A1A0E", color: "#E8734A", borderRadius: 999 }}>yolo</span>
-                      )}
-                    </div>
-                    <p className="text-sm mb-2" style={{ color: "#F5F0EB" }}>{r.what_building}</p>
-                    <div className="flex items-center gap-2 text-xs font-mono" style={{ color: "#A09890" }}>
-                      {r.room_selected && <span>{r.room_selected}</span>}
-                      <span>· {new Date(r.created_at).toLocaleDateString()}</span>
-                      <span>· {r.status}</span>
-                    </div>
-                  </div>
-                  {r.status === "pending" && (
-                    r.email === user?.email ? (
-                      <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#1E1E1E", color: "#A09890", borderRadius: 999 }}>your own request</span>
-                    ) : (
-                      <div className="flex gap-1.5 flex-wrap">
-                        <PillBtn variant="ghost" icon={MessageSquare} onClick={() => setDmRequest(r)}>dm first</PillBtn>
-                        <PillBtn variant="primary" icon={Zap} onClick={() => yoloOnboard(r)}>yolo onboard</PillBtn>
-                        <PillBtn variant="ghost" onClick={() => reject(r)}>reject</PillBtn>
-                      </div>
-                    )
-                  )}
-                </div>
-              ))}
-            </div>
-          </TabsContent>
-
-          {/* ── Members ── */}
-          <TabsContent value="members" className="space-y-0">
-            <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden" }}>
-              {members.map((m) => (
-                <div
-                  key={m.id}
-                  className="px-5 py-3 flex items-center gap-4 flex-wrap"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                >
-                  <AvatarBlock url={m.avatar_url} name={m.display_name} size={36} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium truncate" style={{ color: "#F5F0EB" }}>{m.display_name}</span>
-                      <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#2A1A0E", color: "#E8734A", borderRadius: 999 }}>builder</span>
-                      {m.is_admin && (
-                        <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5" style={{ background: "#1E1E1E", color: "#C9B99A", borderRadius: 999 }}>admin</span>
-                      )}
-                    </div>
-                    <span className="text-xs font-mono" style={{ color: "#A09890" }}>
-                      joined {new Date(m.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {m.id !== user?.id && (
-                      <>
-                        <button
-                          onClick={() => setPermissionsMember(m)}
-                          className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
-                          style={{ border: "1px solid rgba(255,255,255,0.08)", color: "#6A6460" }}
-                          title="manage per-project permissions"
-                        >
-                          <Settings2 className="h-3 w-3" /> permissions
-                        </button>
-                        <button
-                          onClick={() => toggleAdmin(m.id, m.is_admin)}
-                          className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
-                          style={{
-                            border: m.is_admin ? "1px solid rgba(201,185,154,0.3)" : "1px solid rgba(255,255,255,0.08)",
-                            color: m.is_admin ? "#C9B99A" : "#6A6460",
-                          }}
-                          title={m.is_admin ? "remove admin" : "make admin"}
-                        >
-                          {m.is_admin ? <ShieldOff className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
-                          {m.is_admin ? "demote" : "make admin"}
-                        </button>
-                        <PillBtn variant="ghost" onClick={() => removeMember(m.id)}>remove</PillBtn>
-                      </>
-                    )}
-                    {m.id === user?.id && (
-                      <span className="text-[10px] font-mono" style={{ color: "#4A4A4A" }}>you</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </TabsContent>
-
-          {/* ── Channels ── */}
-          <TabsContent value="channels" className="space-y-3">
-            <p className="text-xs font-mono mb-4" style={{ color: "#6A6460" }}>
-              control what visitors (not logged in) can see, and set per-channel intro videos.
-            </p>
-            {channels.map((c) => (
-              <ChannelAdminRow key={c.id} channel={c} onUpdate={loadAll} />
-            ))}
-          </TabsContent>
-
-          {/* ── Projects ── */}
-          <TabsContent value="projects" className="space-y-3">
-            <p className="text-xs font-mono mb-4" style={{ color: "#6A6460" }}>
-              control member posting, sub-project creation, editing, and deletion per project folder.
-            </p>
-            {projects.length === 0 && (
-              <p className="text-sm font-mono" style={{ color: "#A09890" }}>no projects yet.</p>
-            )}
-            {projects.map((p) => (
-              <ProjectAdminRow key={p.id} project={p} onUpdate={loadAll} />
-            ))}
-          </TabsContent>
-        </Tabs>
-
-        <MemberPermissionsDialog
-          member={permissionsMember}
-          projects={projects}
-          onClose={() => setPermissionsMember(null)}
-        />
-
-        <DmThread
-          request={dmRequest}
-          onClose={() => { setDmRequest(null); loadAll(); }}
-          onApprove={(req) => yoloOnboard(req)}
-          onReject={reject}
-        />
-
-        <Dialog open={!!credentialModal} onOpenChange={(o) => !o && setCredentialModal(null)}>
-          <DialogContent style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
-            <DialogHeader>
-              <DialogTitle className="font-medium" style={{ color: "#F5F0EB" }}>approved</DialogTitle>
-            </DialogHeader>
-            <p className="text-sm mb-4" style={{ color: "#A09890" }}>
-              share these credentials with the new builder. they should change their password.
-            </p>
-            <div className="space-y-2 font-mono text-xs">
-              <div className="p-3 break-all" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, color: "#F5F0EB" }}>
-                <span style={{ color: "#A09890" }}>email · </span>{credentialModal?.email}
-              </div>
-              <div className="p-3 break-all" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, color: "#F5F0EB" }}>
-                <span style={{ color: "#A09890" }}>password · </span>{credentialModal?.password}
-              </div>
-            </div>
-            <Button
-              onClick={() => { navigator.clipboard.writeText(`${credentialModal?.email} / ${credentialModal?.password}`); toast.success("copied"); }}
-              className="mt-3"
-            >
-              copy
-            </Button>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </AppLayout>
-  );
+const ytId = (url: string): string | null => {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be"))      return u.pathname.slice(1) || null;
+    if (u.hostname.includes("youtube.com")) {
+      if (u.pathname.startsWith("/watch"))    return u.searchParams.get("v");
+      if (u.pathname.startsWith("/shorts/"))  return u.pathname.split("/")[2] || null;
+      if (u.pathname.startsWith("/embed/"))   return u.pathname.split("/")[2] || null;
+    }
+  } catch {}
+  return null;
 };
 
-// ─── Channel Admin Row ────────────────────────────────────────────────────────
-const ChannelAdminRow = ({ channel, onUpdate }: { channel: any; onUpdate: () => void }) => {
-  const [count, setCount]       = useState(0);
-  const [recent, setRecent]     = useState<any[]>([]);
-  const [isPublic, setIsPublic] = useState(!!channel.is_public_visible);
-  const [introUrl, setIntroUrl] = useState(channel.intro_video_url ?? "");
-  const [open, setOpen]         = useState(false);
+const isImageUrl = (url: string) => /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url);
+const safeHost   = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
-  const load = () => {
-    supabase.from("posts").select("*", { count: "exact", head: true }).eq("channel_id", channel.id)
-      .then(({ count }) => setCount(count ?? 0));
-    supabase.from("posts").select("id, title, content, is_pinned, created_at, visibility")
-      .eq("channel_id", channel.id).order("created_at", { ascending: false }).limit(5)
-      .then(({ data }) => setRecent(data ?? []));
-  };
-  useEffect(load, [channel.id]);
+const pillSt = (active: boolean): React.CSSProperties => ({
+  background:   active ? "#E8734A" : "#1E1E1E",
+  color:        active ? "#0D0D0D" : "#A09890",
+  border:       active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 999,
+  padding:      "5px 12px",
+  fontSize:     12,
+  transition:   "all .15s",
+  cursor:       "pointer",
+  textAlign:    "left",
+  whiteSpace:   "nowrap",
+  display:      "block",
+  width:        "100%",
+});
 
-  const togglePublic = async (val: boolean) => {
-    setIsPublic(val);
-    const { error } = await supabase.from("channels").update({ is_public_visible: val }).eq("id", channel.id);
-    if (error) { toast.error(error.message); setIsPublic(!val); return; }
-    toast.success(val ? `${channel.name} is now visible to visitors` : `${channel.name} is members only`);
-  };
+// ─────────────────────────────────────────────────────────────
+// PostCard
+// ─────────────────────────────────────────────────────────────
+export const PostCard = ({
+  post,
+  showChannel   = false,
+  compact       = false,
+  readOnly      = false,
+  onAdminRequestPublic,
+  onDeleted,
+}: {
+  post: FeedPost;
+  showChannel?: boolean;
+  compact?: boolean;
+  readOnly?: boolean;
+  onAdminRequestPublic?: (post: FeedPost) => void;
+  onDeleted?: (id: string) => void;
+}) => {
+  const { user, profile, isAdmin } = useAuth();
 
-  const saveIntroUrl = async () => {
-    const { error } = await supabase.from("channels").update({ intro_video_url: introUrl.trim() || null }).eq("id", channel.id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("intro video saved");
-  };
+  const isMember  = !!(user && profile?.is_approved);
+  const canManage = !readOnly && !!(user && (user.id === post.user_id || isAdmin));
 
-  const togglePin = async (postId: string, current: boolean) => {
-    await supabase.from("posts").update({ is_pinned: !current }).eq("id", postId);
-    setRecent((arr) => arr.map((p) => p.id === postId ? { ...p, is_pinned: !current } : p));
-    toast.success(current ? "unpinned" : "pinned");
-  };
+  // ── Display state (updated after inline save) ─────────────
+  const [displayTitle,   setDisplayTitle]   = useState(post.title);
+  const [displayContent, setDisplayContent] = useState(post.content);
 
-  const removePost = async (postId: string) => {
-    if (!confirm("delete this post?")) return;
-    await supabase.from("posts").delete().eq("id", postId);
-    setRecent((arr) => arr.filter((p) => p.id !== postId));
-    toast.success("deleted");
-  };
+  // ── Reactions / Comments ──────────────────────────────────
+  const [reactionCount,  setReactionCount]  = useState(post.reaction_count ?? 0);
+  const [commentCount,   setCommentCount]   = useState(post.comment_count  ?? 0);
+  const [comments,       setComments]       = useState<any[]>([]);
+  const [showComments,   setShowComments]   = useState(false);
+  const [newComment,     setNewComment]     = useState("");
+  const [reactedEmojis,  setReactedEmojis]  = useState<Set<string>>(new Set());
+  const [playVideo,      setPlayVideo]      = useState(false);
+  const [lightboxIdx,    setLightboxIdx]    = useState<number | null>(null);
 
-  return (
-    <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden" }}>
-      {/* Header — always visible */}
-      <div
-        className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
-        onClick={() => setOpen(o => !o)}
-      >
-        <div className="flex items-center gap-3">
-          {open ? <ChevronUp className="h-4 w-4" style={{ color: "#6A6460" }} /> : <ChevronDown className="h-4 w-4" style={{ color: "#6A6460" }} />}
-          <h3 className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
-            {channel.name.toLowerCase()}
-          </h3>
-          <span className="text-xs font-mono" style={{ color: "#6A6460" }}>{count} posts</span>
-        </div>
-        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-          {isPublic
-            ? <Globe className="h-3.5 w-3.5" style={{ color: "#1B9A6A" }} />
-            : <Lock className="h-3.5 w-3.5" style={{ color: "#6A6460" }} />}
-          <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: isPublic ? "#1B9A6A" : "#6A6460" }}>
-            {isPublic ? "public" : "members only"}
-          </span>
-          <Switch checked={isPublic} onCheckedChange={togglePublic} />
-        </div>
-      </div>
+  // ── Inline edit state ─────────────────────────────────────
+  const [editMode,    setEditMode]    = useState(false);
+  const [editTitle,   setEditTitle]   = useState(post.title ?? "");
+  const [editContent, setEditContent] = useState(post.content);
+  const [saving,      setSaving]      = useState(false);
 
-      {/* Expanded */}
-      {open && (
-        <div className="px-5 pb-5 space-y-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          {/* Intro video */}
-          <div className="pt-4">
-            <p className="text-[10px] font-mono uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: "#8A8480" }}>
-              <Youtube className="h-3 w-3" /> intro video url
-            </p>
-            <div className="flex gap-2">
-              <input
-                value={introUrl}
-                onChange={e => setIntroUrl(e.target.value)}
-                placeholder="https://youtube.com/watch?v=…"
-                className="flex-1 px-3 py-2 text-xs font-mono focus:outline-none"
-                style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-              />
-              <button
-                onClick={saveIntroUrl}
-                className="px-4 py-2 text-xs font-mono rounded-lg hover:opacity-90"
-                style={{ background: "#E8734A", color: "#0D0D0D" }}
-              >
-                save
-              </button>
-            </div>
-            {introUrl && (
-              <p className="text-[10px] font-mono mt-1" style={{ color: "#6A6460" }}>
-                ✓ intro video set — shows collapsed above posts on this channel + home dashboard
-              </p>
-            )}
-          </div>
+  // ── Move dialog state ─────────────────────────────────────
+  const [showMoveDialog,  setShowMoveDialog]  = useState(false);
+  const [moveChannels,    setMoveChannels]    = useState<{id:string;slug:string;name:string}[]>([]);
+  const [moveProjects,    setMoveProjects]    = useState<{id:string;name:string;parent_project_id:string|null}[]>([]);
+  const [moveChannelId,   setMoveChannelId]   = useState(post.channel_id);
+  const [moveProjectId,   setMoveProjectId]   = useState<string|null>(post.project_id ?? null);
+  const [moving,          setMoving]          = useState(false);
 
-          {/* Recent posts */}
-          <div>
-            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>recent posts</p>
-            <div className="space-y-2">
-              {recent.map((p) => (
-                <div key={p.id} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 truncate" style={{ color: "#F5F0EB" }}>
-                    {p.title || p.content?.slice(0, 60)}
-                  </span>
-                  <span className="text-[10px] font-mono uppercase" style={{ color: "#A09890" }}>{p.visibility}</span>
-                  <PillBtn variant="ghost" onClick={() => togglePin(p.id, p.is_pinned)}>
-                    {p.is_pinned ? "unpin" : "pin"}
-                  </PillBtn>
-                  <PillBtn variant="ghost" onClick={() => removePost(p.id)}>×</PillBtn>
-                </div>
-              ))}
-              {recent.length === 0 && (
-                <p className="text-xs font-mono" style={{ color: "#4A4A4A" }}>no posts</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─── Project Admin Row ────────────────────────────────────────────────────────
-const ProjectAdminRow = ({ project, onUpdate }: { project: any; onUpdate: () => void }) => {
-  const [open, setOpen]           = useState(false);
-  const [canPost, setCanPost]     = useState(project.can_members_post ?? true);
-  const [canSub, setCanSub]       = useState(project.can_members_create_sub ?? false);
-  const [canEdit, setCanEdit]     = useState(project.can_members_edit ?? false);
-  const [canDelete, setCanDelete] = useState(project.can_members_delete ?? false);
-  const [introUrl, setIntroUrl]   = useState(project.intro_video_url ?? "");
-  const [isHidden, setIsHidden]   = useState(!!project.is_hidden);
-  const [subCount, setSubCount]   = useState(0);
-  const [postCount, setPostCount] = useState(0);
-
+  // ── Fetch data for move dialog when opened ────────────────
   useEffect(() => {
-    supabase.from("channel_projects").select("*", { count: "exact", head: true }).eq("parent_project_id", project.id).eq("is_active", true)
-      .then(({ count }) => setSubCount(count ?? 0));
-    supabase.from("posts").select("*", { count: "exact", head: true }).eq("project_id", project.id)
-      .then(({ count }) => setPostCount(count ?? 0));
-  }, [project.id]);
+    if (!showMoveDialog) return;
+    supabase.from("channels").select("id,slug,name").order("sort_order")
+      .then(({ data }) => setMoveChannels(data ?? []));
+    supabase.from("channel_projects").select("id,name,parent_project_id")
+      .eq("is_active", true).order("name")
+      .then(({ data }) => setMoveProjects(data ?? []));
+  }, [showMoveDialog]);
 
-  const toggle = async (field: string, val: boolean, setter: (v: boolean) => void) => {
-    setter(val);
-    const { error } = await supabase.from("channel_projects").update({ [field]: val }).eq("id", project.id);
-    if (error) { toast.error(error.message); setter(!val); return; }
-    toast.success("updated");
+  // ── Fetch accurate counts on mount ────────────────────────
+  useEffect(() => {
+    supabase.from("reactions").select("*", { count: "exact", head: true })
+      .eq("post_id", post.id)
+      .then(({ count }) => { if (count !== null) setReactionCount(count); });
+    supabase.from("comments").select("*", { count: "exact", head: true })
+      .eq("post_id", post.id)
+      .then(({ count }) => { if (count !== null) setCommentCount(count); });
+  }, [post.id]);
+
+  // ── Which emojis did THIS member already react with ───────
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("reactions").select("emoji")
+      .eq("post_id", post.id).eq("user_id", user.id)
+      .then(({ data }) => { if (data) setReactedEmojis(new Set(data.map((r) => r.emoji))); });
+  }, [user, post.id]);
+
+  // ── Load comments ─────────────────────────────────────────
+  const loadComments = async () => {
+    const { data } = await supabase
+      .from("comments")
+      .select("id, content, created_at, user_id, profiles!comments_user_id_fkey(display_name, avatar_url, is_admin)")
+      .eq("post_id", post.id)
+      .order("created_at", { ascending: true });
+    setComments(data ?? []);
   };
 
-  const saveIntroUrl = async () => {
-    const { error } = await supabase.from("channel_projects").update({ intro_video_url: introUrl.trim() || null }).eq("id", project.id);
+  const toggleComments = () => {
+    if (!showComments) loadComments();
+    setShowComments((s) => !s);
+  };
+
+  // ── Emoji react (members only) ────────────────────────────
+  const react = async (emoji: string) => {
+    if (!isMember) {
+      toast("join builders house to react 🔥", { description: "members-only feature" });
+      return;
+    }
+    if (reactedEmojis.has(emoji)) {
+      await supabase.from("reactions").delete().eq("post_id", post.id).eq("user_id", user!.id).eq("emoji", emoji);
+      setReactedEmojis((s) => { const n = new Set(s); n.delete(emoji); return n; });
+      setReactionCount((c) => Math.max(0, c - 1));
+    } else {
+      await supabase.from("reactions").insert({ post_id: post.id, user_id: user!.id, emoji });
+      setReactedEmojis((s) => new Set(s).add(emoji));
+      setReactionCount((c) => c + 1);
+    }
+  };
+
+  // ── Submit comment (members only) ─────────────────────────
+  const submitComment = async () => {
+    if (!newComment.trim() || !isMember) return;
+    const { error } = await supabase.from("comments")
+      .insert({ post_id: post.id, user_id: user!.id, content: newComment.trim() });
     if (error) { toast.error(error.message); return; }
-    toast.success("intro video saved");
+    if (post.user_id !== user!.id) {
+      await supabase.from("notifications").insert({
+        recipient_id: post.user_id, type: "comment",
+        related_id: post.id,
+        content: `${profile!.display_name} replied to your post`,
+      });
+    }
+    setNewComment("");
+    setCommentCount((c) => c + 1);
+    loadComments();
   };
 
-  const projectTypeBadge = project.project_type === "skill" ? "skill" : "project";
+  // ── Inline edit save ──────────────────────────────────────
+  const handleSave = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("posts")
+      .update({ title: editTitle.trim() || null, content: editContent })
+      .eq("id", post.id);
+    if (error) { toast.error(error.message); setSaving(false); return; }
+    setDisplayTitle(editTitle.trim() || null);
+    setDisplayContent(editContent);
+    toast.success("post updated");
+    setSaving(false);
+    setEditMode(false);
+  };
 
+  const cancelEdit = () => {
+    setEditTitle(displayTitle ?? "");
+    setEditContent(displayContent);
+    setEditMode(false);
+  };
+
+  // ── Delete ────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!window.confirm("delete this post?")) return;
+    const { error } = await supabase.from("posts").delete().eq("id", post.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("deleted");
+    onDeleted?.(post.id);
+  };
+
+  // ── Move ──────────────────────────────────────────────────
+  const handleMove = async () => {
+    setMoving(true);
+    const { error } = await supabase.from("posts")
+      .update({ channel_id: moveChannelId, project_id: moveProjectId })
+      .eq("id", post.id);
+    if (error) { toast.error(error.message); setMoving(false); return; }
+    toast.success("post moved");
+    setMoving(false);
+    setShowMoveDialog(false);
+    onDeleted?.(post.id); // remove from current view since location changed
+  };
+
+  const authorName = readOnly ? "builders house" : (post.author?.display_name ?? "member");
+
+  const yt        = post.url && post.type === "video" ? ytId(post.url) : null;
+  const showImage = post.url && isImageUrl(post.url) && !yt;
+  const showLink  = post.url && !yt && !showImage;
+
+  const allImages: string[] = [
+    ...(Array.isArray(post.image_urls) ? post.image_urls : []),
+    ...(showImage ? [post.url!] : []),
+  ];
+
+  // ─── Project tree helpers for move dialog ─────────────────
+  const topLevelProjects = moveProjects.filter((p) => !p.parent_project_id);
+  const childProjects    = (parentId: string) => moveProjects.filter((p) => p.parent_project_id === parentId);
+
+  // ─────────────────────────────────────────────────────────
   return (
-    <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden" }}>
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
-        onClick={() => setOpen(o => !o)}
+    <>
+      <article
+        className="animate-fade-in group relative"
+        style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: 24 }}
       >
-        <div className="flex items-center gap-3">
-          {open ? <ChevronUp className="h-4 w-4" style={{ color: "#6A6460" }} /> : <ChevronDown className="h-4 w-4" style={{ color: "#6A6460" }} />}
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono opacity-40" style={{ color: "#F5F0EB" }}>#{project.slot_number}</span>
-              <h3 className="font-medium" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>{project.name}</h3>
-              <span
-                className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5"
-                style={{ background: "#1E1E1E", color: project.project_type === "skill" ? "#7C3AED" : "#E8734A", borderRadius: 999, border: "1px solid rgba(255,255,255,0.06)" }}
+        {/* ── Manage buttons (hover reveal, top-right) ── */}
+        {canManage && !editMode && (
+          <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            {user?.id === post.user_id && (
+              <button
+                onClick={() => setEditMode(true)}
+                className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-white/10"
+                style={{ color: "#A09890" }}
+                title="edit post"
               >
-                {projectTypeBadge}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-[10px] font-mono" style={{ color: "#6A6460" }}>{postCount} posts</span>
-              <span className="text-[10px] font-mono" style={{ color: "#6A6460" }}>{subCount} sub-folders</span>
-              {!canPost && <span className="text-[10px] font-mono" style={{ color: "#EA580C" }}>posting locked</span>}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-          {isHidden
-            ? <EyeOff className="h-3.5 w-3.5" style={{ color: "#6A6460" }} />
-            : <Eye className="h-3.5 w-3.5" style={{ color: "#1B9A6A" }} />}
-          <Switch
-            checked={!isHidden}
-            onCheckedChange={v => toggle("is_hidden", !v, (val) => setIsHidden(!val))}
-          />
-        </div>
-      </div>
-
-      {/* Expanded */}
-      {open && (
-        <div className="px-5 pb-5" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-[10px] font-mono uppercase tracking-wider mt-4 mb-1" style={{ color: "#8A8480" }}>member permissions</p>
-
-          <ToggleRow
-            label="members can post"
-            sublabel="non-admins can create posts inside this folder"
-            checked={canPost}
-            onChange={v => toggle("can_members_post", v, setCanPost)}
-          />
-          <ToggleRow
-            label="members can create sub-folders"
-            sublabel="non-admins can add new sub-project tiles inside this folder"
-            checked={canSub}
-            onChange={v => toggle("can_members_create_sub", v, setCanSub)}
-          />
-          <ToggleRow
-            label="members can edit their posts"
-            sublabel="non-admins can edit posts they authored inside this folder"
-            checked={canEdit}
-            onChange={v => toggle("can_members_edit", v, setCanEdit)}
-          />
-          <ToggleRow
-            label="members can delete their posts"
-            sublabel="non-admins can delete posts they authored inside this folder"
-            checked={canDelete}
-            onChange={v => toggle("can_members_delete", v, setCanDelete)}
-          />
-
-          <p className="text-[10px] font-mono uppercase tracking-wider mt-5 mb-2" style={{ color: "#8A8480" }}>
-            <Youtube className="h-3 w-3 inline mr-1" />intro video url
-          </p>
-          <div className="flex gap-2">
-            <input
-              value={introUrl}
-              onChange={e => setIntroUrl(e.target.value)}
-              placeholder="https://youtube.com/watch?v=…"
-              className="flex-1 px-3 py-2 text-xs font-mono focus:outline-none"
-              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-            />
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
-              onClick={saveIntroUrl}
-              className="px-4 py-2 text-xs font-mono rounded-lg hover:opacity-90"
-              style={{ background: "#E8734A", color: "#0D0D0D" }}
+              onClick={() => setShowMoveDialog(true)}
+              className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-white/10"
+              style={{ color: "#A09890" }}
+              title="move post"
             >
-              save
+              <MoveRight className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={handleDelete}
+              className="h-7 w-7 flex items-center justify-center rounded-md transition-colors hover:bg-red-500/20"
+              style={{ color: "#A09890" }}
+              title="delete post"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
-      )}
-    </div>
-  );
-};
+        )}
 
-// ─── Member Permissions Dialog ────────────────────────────────────────────────
-// Per-member per-project override. If no row exists → project defaults apply.
-// Creating any toggle creates a row; "reset" deletes the row → back to defaults.
-const MemberPermissionsDialog = ({
-  member, projects, onClose,
-}: { member: any; projects: any[]; onClose: () => void }) => {
-  const [overrides, setOverrides] = useState<Record<string, any>>({});
-  const [loading,   setLoading]   = useState(true);
-
-  useEffect(() => {
-    if (!member) return;
-    setLoading(true);
-    supabase
-      .from("member_project_permissions")
-      .select("*")
-      .eq("member_id", member.id)
-      .then(({ data }) => {
-        const map: Record<string, any> = {};
-        (data ?? []).forEach((r: any) => { map[r.project_id] = r; });
-        setOverrides(map);
-        setLoading(false);
-      });
-  }, [member?.id]);
-
-  const upsert = async (projectId: string, field: string, val: boolean) => {
-    const existing = overrides[projectId];
-    if (existing?.id) {
-      await supabase
-        .from("member_project_permissions")
-        .update({ [field]: val })
-        .eq("id", existing.id);
-      setOverrides(prev => ({ ...prev, [projectId]: { ...existing, [field]: val } }));
-    } else {
-      const defaults = projects.find(p => p.id === projectId) ?? {};
-      const row = {
-        member_id:      member.id,
-        project_id:     projectId,
-        can_post:       defaults.can_members_post        ?? true,
-        can_edit:       defaults.can_members_edit        ?? false,
-        can_delete:     defaults.can_members_delete      ?? false,
-        can_create_sub: defaults.can_members_create_sub  ?? false,
-        [field]:        val,
-      };
-      const { data } = await supabase
-        .from("member_project_permissions")
-        .insert(row)
-        .select()
-        .maybeSingle();
-      setOverrides(prev => ({ ...prev, [projectId]: data ?? { ...row } }));
-    }
-    toast.success("saved");
-  };
-
-  const reset = async (projectId: string) => {
-    const existing = overrides[projectId];
-    if (!existing?.id) return;
-    await supabase.from("member_project_permissions").delete().eq("id", existing.id);
-    setOverrides(prev => { const n = { ...prev }; delete n[projectId]; return n; });
-    toast.success("reset to project defaults");
-  };
-
-  if (!member) return null;
-
-  return (
-    <Dialog open={!!member} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent
-        className="max-w-lg"
-        style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}
-      >
-        <DialogHeader>
-          <DialogTitle className="font-medium flex items-center gap-2" style={{ color: "#F5F0EB" }}>
-            <Settings2 className="h-4 w-4" style={{ color: "#E8734A" }} />
-            project permissions · {member.display_name}
-          </DialogTitle>
-        </DialogHeader>
-
-        <p className="text-[11px] font-mono mb-4" style={{ color: "#6A6460" }}>
-          overrides take priority over project defaults. toggle any permission to create an override.
-          hit reset to go back to project defaults.
-        </p>
-
-        {loading ? (
-          <div className="py-8 text-center text-sm font-mono" style={{ color: "#6A6460" }}>loading…</div>
-        ) : (
-          <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
-            {projects.length === 0 && (
-              <p className="text-sm font-mono text-center py-8" style={{ color: "#6A6460" }}>no projects yet.</p>
-            )}
-            {projects.map(p => {
-              const ov = overrides[p.id];
-              const has = !!ov?.id;
-
-              // effective values: override if exists, else project default
-              const val = (field: string, def: boolean | null) =>
-                has ? (ov[field] ?? def ?? false) : (def ?? false);
-
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    background: has ? "rgba(232,115,74,0.05)" : "#0D0D0D",
-                    border: has ? "1px solid rgba(232,115,74,0.2)" : "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: 12,
-                    padding: "12px 14px",
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium" style={{ color: "#F5F0EB" }}>{p.name}</span>
-                      {has && (
-                        <span
-                          className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5"
-                          style={{ background: "rgba(232,115,74,0.15)", color: "#E8734A", borderRadius: 999 }}
-                        >
-                          override active
-                        </span>
-                      )}
-                    </div>
-                    {has && (
-                      <button
-                        onClick={() => reset(p.id)}
-                        className="text-[10px] font-mono uppercase tracking-wider hover:opacity-80 transition-opacity"
-                        style={{ color: "#6A6460" }}
-                      >
-                        reset →
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-4">
-                    {[
-                      { field: "can_post",       label: "can post",           def: p.can_members_post        ?? true  },
-                      { field: "can_edit",       label: "can edit own posts", def: p.can_members_edit        ?? false },
-                      { field: "can_delete",     label: "can delete own",     def: p.can_members_delete      ?? false },
-                      { field: "can_create_sub", label: "can add sub-folder", def: p.can_members_create_sub  ?? false },
-                    ].map(({ field, label, def }) => (
-                      <div
-                        key={field}
-                        className="flex items-center justify-between py-1.5"
-                        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                      >
-                        <span className="text-xs" style={{ color: "#A09890" }}>{label}</span>
-                        <Switch
-                          checked={val(field, def)}
-                          onCheckedChange={v => upsert(p.id, field, v)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  {!has && (
-                    <p className="text-[10px] font-mono mt-2" style={{ color: "#4A4A4A" }}>
-                      using project defaults — toggle to override for this member
-                    </p>
+        {/* ── Author row ── */}
+        <div className="flex items-center gap-3 mb-3">
+          {!readOnly ? (
+            <Link to={`/profile/${post.user_id}`} className="flex items-center gap-3 group/author min-w-0 flex-1">
+              <AvatarBlock url={post.author?.avatar_url} name={authorName} size={32} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium truncate" style={{ color: "#F5F0EB" }}>{authorName}</span>
+                  <span className="text-[11px] uppercase tracking-wider" style={{ background: "#2A1A0E", color: "#E8734A", padding: "2px 8px", borderRadius: 999 }}>
+                    builder
+                  </span>
+                  {post.author?.is_admin && (
+                    <span className="text-[11px] uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#C9B99A", padding: "2px 8px", borderRadius: 999 }}>
+                      admin
+                    </span>
                   )}
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// ─── DM Thread ────────────────────────────────────────────────────────────────
-const DmThread = ({ request, onClose, onApprove, onReject }: any) => {
-  const [messages, setMessages] = useState<any[]>([]);
-  const [draft, setDraft] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!request) { setMessages([]); return; }
-    supabase.from("onboarding_messages").select("*").eq("request_id", request.id).order("created_at", { ascending: true })
-      .then(({ data }) => setMessages(data ?? []));
-    const ch = supabase.channel(`admin-onboarding:${request.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "onboarding_messages", filter: `request_id=eq.${request.id}` },
-        (p) => setMessages((m) => [...m, p.new]))
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [request]);
-
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  const send = async () => {
-    if (!draft.trim() || !request) return;
-    const { error } = await supabase.from("onboarding_messages").insert({
-      request_id: request.id, sender_type: "admin", content: draft.trim(),
-    });
-    if (error) { toast.error(error.message); return; }
-    setDraft("");
-  };
-
-  return (
-    <Dialog open={!!request} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl" style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16 }}>
-        <DialogHeader>
-          <DialogTitle className="font-medium flex items-center gap-2" style={{ color: "#F5F0EB" }}>
-            <MessageSquare className="h-4 w-4" /> dm with {request?.name}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="p-3 mb-3" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8 }}>
-          <p className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#A09890" }}>building</p>
-          <p className="text-sm" style={{ color: "#F5F0EB" }}>{request?.what_building}</p>
-        </div>
-        <div className="max-h-[320px] overflow-y-auto space-y-3 p-1">
-          {messages.length === 0 && (
-            <p className="text-xs font-mono text-center py-8" style={{ color: "#A09890" }}>no messages yet — say hi.</p>
-          )}
-          {messages.map((m) => (
-            <div key={m.id} className={`flex ${m.sender_type === "admin" ? "justify-end" : "justify-start"}`}>
-              <div className="max-w-[75%]">
-                {m.sender_type === "requester" && (
-                  <div className="text-[10px] font-mono uppercase tracking-wider mb-1" style={{ color: "#A09890" }}>{request?.name}</div>
-                )}
-                <div className="px-3 py-2 text-sm" style={{
-                  background: m.sender_type === "admin" ? "#E8734A" : "#1E1E1E",
-                  color: m.sender_type === "admin" ? "#0D0D0D" : "#F5F0EB",
-                  borderRadius: 8,
-                }}>
-                  {m.content}
+                <div className="text-[11px] font-mono uppercase mt-0.5" style={{ color: "#8A8480" }}>
+                  {timeAgo(post.created_at)}
+                  {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
+                </div>
+              </div>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full flex items-center justify-center" style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <span className="text-xs" style={{ color: "#F5F0EB" }}>b</span>
+              </div>
+              <div>
+                <div className="text-sm font-medium" style={{ color: "#F5F0EB" }}>builders house</div>
+                <div className="text-[11px] font-mono uppercase" style={{ color: "#8A8480" }}>
+                  {timeAgo(post.created_at)}
+                  {showChannel && post.channel && <> · {post.channel.name.toLowerCase()}</>}
                 </div>
               </div>
             </div>
-          ))}
-          <div ref={endRef} />
+          )}
+
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+            {post.is_pinned && <Pin className="h-3.5 w-3.5" style={{ color: "#E8734A" }} />}
+            {post.visibility === "public" && (
+              <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1A3A2A", color: "#7AC8A0", padding: "2px 8px", borderRadius: 999 }}>public</span>
+            )}
+            {post.visibility === "private" && (
+              <span className="text-[10px] font-mono uppercase tracking-wider" style={{ background: "#1E1E1E", color: "#8A8480", padding: "2px 8px", borderRadius: 999 }}>private</span>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2 mt-3">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="type a message…"
-            onKeyDown={(e) => e.key === "Enter" && send()}
-            className="flex-1 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
-          />
-          <Button size="icon" onClick={send}><Send className="h-4 w-4" /></Button>
+
+        {/* ── Inline edit mode ── */}
+        {editMode ? (
+          <div className="space-y-2 mb-3">
+            <input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              placeholder="title (optional)"
+              maxLength={200}
+              className="w-full px-3 py-2 text-sm font-medium focus:outline-none"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.1)", color: "#F5F0EB", borderRadius: 8 }}
+            />
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              placeholder="what's on your mind?"
+              rows={4}
+              maxLength={5000}
+              className="w-full px-3 py-2 text-sm resize-none focus:outline-none"
+              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.1)", color: "#F5F0EB", borderRadius: 8 }}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? "saving…" : "save"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={cancelEdit}>cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ── Title + Body ── */}
+            {displayTitle && (
+              <h3 className="font-medium mb-2 leading-snug" style={{ color: "#F5F0EB", fontSize: 15, letterSpacing: "-0.01em" }}>
+                {displayTitle}
+              </h3>
+            )}
+            {displayContent && (
+              <p
+                className={`whitespace-pre-wrap ${compact ? "line-clamp-3" : ""}`}
+                style={{ color: "#8A8480", fontSize: 14, lineHeight: 1.5 }}
+              >
+                {displayContent}
+              </p>
+            )}
+          </>
+        )}
+
+        {/* ── YouTube embed ── */}
+        {yt && !playVideo && (
+          <button
+            onClick={() => setPlayVideo(true)}
+            className="mt-4 relative w-full aspect-video overflow-hidden block group/yt"
+            style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <img src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`} alt={displayTitle || "video"} className="w-full h-full object-cover" loading="lazy" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center justify-center transition-transform group-hover/yt:scale-110" style={{ background: "rgba(232,115,74,0.9)", borderRadius: "50%", width: 48, height: 48 }}>
+                <Play className="h-5 w-5 ml-0.5" style={{ color: "#0D0D0D" }} fill="#0D0D0D" />
+              </div>
+            </div>
+          </button>
+        )}
+        {yt && playVideo && (
+          <div className="mt-4 aspect-video overflow-hidden" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}>
+            <iframe
+              src={`https://www.youtube.com/embed/${yt}?autoplay=1`}
+              className="w-full h-full"
+              allowFullScreen
+              allow="autoplay; encrypted-media"
+              title={displayTitle || "video"}
+            />
+          </div>
+        )}
+
+        {/* ── Images (single or gallery) ── */}
+        {allImages.length > 0 && (
+          <div className={`mt-4 ${allImages.length > 1 ? "grid grid-cols-2 gap-1.5" : ""}`}>
+            {allImages.map((src, idx) => (
+              <button
+                key={idx}
+                onClick={() => setLightboxIdx(idx)}
+                className={`block overflow-hidden ${allImages.length === 1 ? "w-full" : ""}`}
+                style={{ borderRadius: allImages.length === 1 ? 12 : 8, border: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <img
+                  src={src}
+                  alt={displayTitle || `image ${idx + 1}`}
+                  loading="lazy"
+                  className="w-full object-cover"
+                  style={{ maxHeight: allImages.length === 1 ? undefined : 180 }}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Link preview ── */}
+        {showLink && (
+          <a
+            href={post.url!}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 flex items-stretch overflow-hidden transition-opacity hover:opacity-90"
+            style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}
+          >
+            <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 80, background: "#0D0D0D" }}>
+              <ExternalLink className="h-5 w-5" style={{ color: "#8A8480" }} />
+            </div>
+            <div className="flex-1 min-w-0 p-3">
+              <div className="text-[10px] font-mono uppercase tracking-wider truncate" style={{ color: "#8A8480" }}>{safeHost(post.url!)}</div>
+              <div className="text-sm font-medium truncate mt-0.5" style={{ color: "#F5F0EB" }}>{displayTitle || post.url}</div>
+            </div>
+          </a>
+        )}
+
+        {/* ── Reactions + Comments ── */}
+        {!readOnly && !editMode && (
+          <>
+            {isMember ? (
+              <div className="mt-5 flex items-center gap-1.5 flex-wrap">
+                {EMOJIS.map((e) => {
+                  const active = reactedEmojis.has(e);
+                  return (
+                    <button
+                      key={e}
+                      onClick={() => react(e)}
+                      className="text-xs transition-colors"
+                      style={{
+                        background:   "#1E1E1E",
+                        border:       active ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: 999,
+                        padding:      "4px 10px",
+                        color:        active ? "#E8734A" : "#F5F0EB",
+                      }}
+                    >
+                      {e}
+                    </button>
+                  );
+                })}
+                {reactionCount > 0 && (
+                  <span className="text-xs font-mono ml-1" style={{ color: "#8A8480" }}>{reactionCount}</span>
+                )}
+                {isAdmin && post.visibility === "community" && onAdminRequestPublic && (
+                  <button
+                    onClick={() => onAdminRequestPublic(post)}
+                    className="ml-2 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 transition-colors"
+                    style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 999, padding: "4px 10px", color: "#C9B99A" }}
+                  >
+                    <Globe className="h-3 w-3" /> request public
+                  </button>
+                )}
+                <button
+                  onClick={toggleComments}
+                  className="ml-auto text-xs flex items-center gap-1.5 font-mono transition-colors hover:text-foreground"
+                  style={{ color: "#8A8480" }}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {commentCount} {commentCount === 1 ? "comment" : "comments"}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-5 flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => react("")}
+                  className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
+                  style={{ color: "#8A8480" }}
+                >
+                  <Heart className="h-3.5 w-3.5" />
+                  {reactionCount} {reactionCount === 1 ? "reaction" : "reactions"}
+                </button>
+                <button
+                  onClick={toggleComments}
+                  className="flex items-center gap-1.5 text-xs font-mono transition-opacity hover:opacity-70"
+                  style={{ color: "#8A8480" }}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {commentCount} {commentCount === 1 ? "comment" : "comments"}
+                </button>
+                <Link
+                  to="/login"
+                  className="ml-auto text-[10px] font-mono uppercase tracking-wider"
+                  style={{ color: "#E8734A" }}
+                >
+                  join to interact →
+                </Link>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Comments section ── */}
+        {showComments && (
+          <div className="mt-5 pt-5 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            {comments.length === 0 && (
+              <p className="text-xs font-mono text-center py-4" style={{ color: "#8A8480" }}>no comments yet.</p>
+            )}
+            {comments.map((c) => (
+              <div key={c.id} className="flex gap-2">
+                {isMember ? (
+                  <AvatarBlock url={c.profiles?.avatar_url} name={c.profiles?.display_name ?? "?"} size={28} />
+                ) : (
+                  <div
+                    className="h-7 w-7 rounded-full flex-shrink-0 flex items-center justify-center"
+                    style={{ background: "#1E1E1E", border: "1px solid rgba(255,255,255,0.08)" }}
+                  >
+                    <UserX className="h-3.5 w-3.5" style={{ color: "#4A4A4A" }} />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    {isMember ? (
+                      <span className="text-xs font-medium" style={{ color: "#F5F0EB" }}>{c.profiles?.display_name}</span>
+                    ) : (
+                      <span className="text-xs font-mono italic" style={{ color: "#4A4A4A" }} title="sign in to see member names">
+                        builder •••
+                      </span>
+                    )}
+                    <span className="text-[10px] font-mono" style={{ color: "#8A8480" }}>{timeAgo(c.created_at)}</span>
+                  </div>
+                  <p className="text-sm" style={{ color: "#F5F0EB" }}>{c.content}</p>
+                </div>
+              </div>
+            ))}
+
+            {isMember ? (
+              <div className="flex gap-2 mt-3">
+                <input
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitComment()}
+                  placeholder="add a comment…"
+                  maxLength={1000}
+                  className="flex-1 px-3 py-2 text-sm focus:outline-none"
+                  style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", color: "#F5F0EB", borderRadius: 8 }}
+                />
+                <Button size="sm" onClick={submitComment}>send</Button>
+              </div>
+            ) : (
+              <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <Link to="/login" className="text-xs font-mono" style={{ color: "#E8734A" }}>
+                  join builders house to comment →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Lightbox ── */}
+        {lightboxIdx !== null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.9)" }}
+            onClick={() => setLightboxIdx(null)}
+          >
+            <button
+              className="absolute top-4 right-4 h-9 w-9 flex items-center justify-center rounded-full"
+              style={{ background: "rgba(255,255,255,0.1)" }}
+              onClick={() => setLightboxIdx(null)}
+            >
+              ✕
+            </button>
+            {allImages.length > 1 && lightboxIdx > 0 && (
+              <button
+                className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
+                style={{ background: "rgba(255,255,255,0.1)" }}
+                onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! - 1 + allImages.length) % allImages.length); }}
+              >
+                ‹
+              </button>
+            )}
+            <img
+              src={allImages[lightboxIdx]}
+              alt=""
+              className="max-w-full max-h-[90vh] object-contain"
+              style={{ borderRadius: 12 }}
+              onClick={(e) => e.stopPropagation()}
+            />
+            {allImages.length > 1 && lightboxIdx < allImages.length - 1 && (
+              <button
+                className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full"
+                style={{ background: "rgba(255,255,255,0.1)" }}
+                onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => (i! + 1) % allImages.length); }}
+              >
+                ›
+              </button>
+            )}
+            {allImages.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {allImages.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={(e) => { e.stopPropagation(); setLightboxIdx(i); }}
+                    className="h-1.5 rounded-full transition-all"
+                    style={{ width: i === lightboxIdx ? 20 : 6, background: i === lightboxIdx ? "#E8734A" : "rgba(255,255,255,0.3)" }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </article>
+
+      {/* ── Move dialog ─────────────────────────────────────────── */}
+      {showMoveDialog && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.85)" }}
+          onClick={() => setShowMoveDialog(false)}
+        >
+          <div
+            className="w-full max-w-md"
+            style={{ background: "#1A1A1A", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 16, padding: 24, maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5 flex-shrink-0">
+              <div>
+                <h3 className="text-sm font-medium" style={{ color: "#F5F0EB" }}>move post</h3>
+                <p className="text-[11px] font-mono mt-0.5" style={{ color: "#8A8480" }}>pick a new channel and project</p>
+              </div>
+              <button
+                onClick={() => setShowMoveDialog(false)}
+                className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10"
+                style={{ color: "#8A8480" }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-5 min-h-0">
+              {/* Channel picker */}
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider mb-2.5" style={{ color: "#8A8480" }}>channel</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {moveChannels.map((ch) => (
+                    <button
+                      key={ch.id}
+                      onClick={() => setMoveChannelId(ch.id)}
+                      style={{
+                        background:   moveChannelId === ch.id ? "#E8734A" : "#1E1E1E",
+                        color:        moveChannelId === ch.id ? "#0D0D0D" : "#A09890",
+                        border:       moveChannelId === ch.id ? "1px solid #E8734A" : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 999, padding: "5px 12px", fontSize: 12, cursor: "pointer",
+                        transition:   "all .15s",
+                      }}
+                    >
+                      {ch.name.toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Project picker */}
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider mb-2.5" style={{ color: "#8A8480" }}>project (optional)</p>
+                <div className="space-y-1">
+                  {/* No project option */}
+                  <button
+                    onClick={() => setMoveProjectId(null)}
+                    style={pillSt(moveProjectId === null)}
+                  >
+                    <span style={{ color: "inherit" }}>no project — general feed</span>
+                  </button>
+
+                  {/* Top-level projects */}
+                  {topLevelProjects.map((proj) => (
+                    <div key={proj.id}>
+                      <button onClick={() => setMoveProjectId(proj.id)} style={pillSt(moveProjectId === proj.id)}>
+                        {proj.name}
+                      </button>
+                      {/* Sub-projects (1 level) */}
+                      {childProjects(proj.id).map((child) => (
+                        <button
+                          key={child.id}
+                          onClick={() => setMoveProjectId(child.id)}
+                          style={{ ...pillSt(moveProjectId === child.id), marginTop: 4, paddingLeft: 24 }}
+                        >
+                          <span style={{ opacity: 0.5, marginRight: 6 }}>└</span>{child.name}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  {moveProjects.length === 0 && (
+                    <p className="text-xs font-mono py-2" style={{ color: "#8A8480" }}>loading projects…</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-2 mt-5 flex-shrink-0 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <button
+                onClick={handleMove}
+                disabled={moving}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: "#E8734A", color: "#0D0D0D", borderRadius: 10, border: "none", cursor: moving ? "not-allowed" : "pointer" }}
+              >
+                <ChevronRight className="h-4 w-4" />
+                {moving ? "moving…" : "move post"}
+              </button>
+              <button
+                onClick={() => setShowMoveDialog(false)}
+                className="px-4 py-2.5 text-sm transition-colors hover:bg-white/10"
+                style={{ background: "#1E1E1E", color: "#A09890", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}
+              >
+                cancel
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2 pt-3 mt-3 justify-end" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          <PillBtn variant="ghost" onClick={() => { onReject(request); onClose(); }}>reject</PillBtn>
-          <PillBtn variant="primary" onClick={() => { onApprove(request); onClose(); }}>approve as builder</PillBtn>
-        </div>
-      </DialogContent>
-    </Dialog>
+      )}
+    </>
   );
 };
 
-export default Admin;
+// ─────────────────────────────────────────────────────────────
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
