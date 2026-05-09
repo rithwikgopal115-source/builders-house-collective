@@ -96,6 +96,7 @@ const ChannelPage = () => {
   const [channelIntroCollapsed, setChannelIntroCollapsed] = useState(false);
   const [slideDir, setSlideDir] = useState<'right' | 'left'>('right');
   const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
   const contentRef = useRef<HTMLDivElement>(null);
   const prevSlugRef = useRef<string>(slug ?? '');
 
@@ -151,13 +152,20 @@ const ChannelPage = () => {
   }, [channel, load]);
 
   // ── Swipe to change channel ──────────────────────────────────
+  // Only fire if the gesture is PRIMARILY horizontal (|dx| > |dy| * 1.5)
+  // This prevents vertical scroll from accidentally triggering channel switches.
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
   };
   const handleTouchEnd = (e: React.TouchEvent) => {
-    const diff = e.changedTouches[0].clientX - touchStartX.current;
-    if (diff > 60 && prevSlug) { setSlideDir('right'); navigate(`/channel/${prevSlug}`); }
-    if (diff < -60 && nextSlug) { setSlideDir('left'); navigate(`/channel/${nextSlug}`); }
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    // If vertical movement dominates, it's a scroll — ignore
+    if (Math.abs(deltaY) > Math.abs(deltaX) * 0.6) return;
+    // Require a meaningful horizontal swipe (60px minimum)
+    if (deltaX > 60 && prevSlug) { setSlideDir('right'); navigate(`/channel/${prevSlug}`); }
+    if (deltaX < -60 && nextSlug) { setSlideDir('left'); navigate(`/channel/${nextSlug}`); }
   };
 
   const requestPublic = async (post: FeedPost) => {
@@ -341,6 +349,7 @@ const ChannelPage = () => {
   const PageWrapper = ({ children }: { children: React.ReactNode }) => (
     <div
       className="relative min-h-screen"
+      style={{ overflowX: 'hidden' }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -483,7 +492,8 @@ const ChannelChat = ({ channelId, channelName, accent }: { channelId: string; ch
   const [messages, setMessages] = useState<any[]>([]);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editingMsgContent, setEditingMsgContent] = useState("");
-  const [collapsed, setCollapsed] = useState(true);
+  // Start collapsed on mobile (window width < 1024px = lg breakpoint)
+  const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 1024 : true);
   const endRef = useRef<HTMLDivElement>(null);
   const ac = accent ?? "#E8734A";
 
