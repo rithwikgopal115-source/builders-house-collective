@@ -641,8 +641,8 @@ const MemberPermissionsDialog = ({
         member_id:      member.id,
         project_id:     projectId,
         can_post:       defaults.can_members_post        ?? true,
-        can_edit:       defaults.can_members_edit        ?? false,
-        can_delete:     defaults.can_members_delete      ?? false,
+        can_edit:       defaults.can_members_edit        ?? true,
+        can_delete:     defaults.can_members_delete      ?? true,
         can_create_sub: defaults.can_members_create_sub  ?? false,
         [field]:        val,
       };
@@ -735,8 +735,8 @@ const MemberPermissionsDialog = ({
                   <div className="grid grid-cols-2 gap-x-4">
                     {[
                       { field: "can_post",       label: "can post",           def: p.can_members_post        ?? true  },
-                      { field: "can_edit",       label: "can edit own posts", def: p.can_members_edit        ?? false },
-                      { field: "can_delete",     label: "can delete own",     def: p.can_members_delete      ?? false },
+                      { field: "can_edit",       label: "can edit own posts", def: p.can_members_edit        ?? true  },
+                      { field: "can_delete",     label: "can delete own",     def: p.can_members_delete      ?? true  },
                       { field: "can_create_sub", label: "can add sub-folder", def: p.can_members_create_sub  ?? false },
                     ].map(({ field, label, def }) => (
                       <div
