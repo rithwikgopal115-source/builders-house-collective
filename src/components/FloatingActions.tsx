@@ -12,8 +12,9 @@ import { QuickSaveSheet } from "./QuickSaveSheet";
 interface Props {
   defaultChannelId?: string;
   defaultIsResource?: boolean;
-  defaultProjectId?: string | null;   // ← new: pre-selects project in composer
+  defaultProjectId?: string | null;
   onCreated?: () => void;
+  accent?: string; // channel accent color for the + button
 }
 
 export const FloatingActions = ({
@@ -21,6 +22,7 @@ export const FloatingActions = ({
   defaultIsResource,
   defaultProjectId,
   onCreated,
+  accent,
 }: Props) => {
   const { profile, isAdmin } = useAuth();
   const [composerOpen, setComposerOpen] = useState(false);
@@ -44,7 +46,7 @@ export const FloatingActions = ({
           onClick={() => setComposerOpen(true)}
           aria-label="new post"
           className="h-14 w-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-lg"
-          style={{ background: "#E8734A", color: "#0D0D0D" }}
+          style={{ background: accent ?? "#E8734A", color: "#0D0D0D" }}
         >
           {/* Plus icon inline to avoid import */}
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
