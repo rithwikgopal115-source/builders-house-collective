@@ -359,15 +359,17 @@ const PostFeed = ({channelId,projectId}:{channelId:string;projectId:string|null|
 };
 
 // ─── ProjectView ──────────────────────────────────────────────
-// Shows project header + sub-project tiles + post feed.
-// Clicking a sub-tile drills into that sub-project's feed.
-const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelProject;onBack:()=>void}) => {
+// Recursive: clicking a sub-tile navigates into it (10 levels deep via projectStack in parent).
+// onSelectSub: parent handles the stack push so any depth works.
+const ProjectView = ({channel,project,onBack,onSelectSub,breadcrumb}:{
+  channel:Channel;project:ChannelProject;onBack:()=>void;
+  onSelectSub:(p:ChannelProject)=>void;breadcrumb?:string;
+}) => {
   const {isAdmin}=useAuth();
   const idx=Math.min((project.gradient_idx??project.slot_number-1),29);
   const g=GRADIENTS[idx];const tc=getTextColor(idx);
   const [videoCollapsed,setVideoCollapsed]=useState(false);
   const [subProjects,setSubProjects]=useState<ChannelProject[]>([]);
-  const [activeSub,setActiveSub]=useState<ChannelProject|null>(null);
   const [showAddSub,setShowAddSub]=useState(false);
   const [editSub,setEditSub]=useState<ChannelProject|null>(null);
 
@@ -380,37 +382,55 @@ const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelPr
 
   const usedSlots=subProjects.map(p=>p.slot_number);
   const nextSubSlot=Array.from({length:60},(_,i)=>i+1).find(n=>!usedSlots.includes(n))??1;
-  const hideSub=async(p:ChannelProject)=>{await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);loadSubs();};
-  const delSub=async(p:ChannelProject)=>{if(!window.confirm(`Delete "${p.name}"?`))return;await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);loadSubs();};
 
-  // ── Sub-project feed view ──
-  if(activeSub){
-    const si=Math.min((activeSub.gradient_idx??activeSub.slot_number-1),29);
-    const sg=GRADIENTS[si];const stc=getTextColor(si);
-    return (
-      <div>
-        <button onClick={()=>setActiveSub(null)} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 hover:text-primary" style={{color:'#A09890'}}>
-          <ArrowLeft className="h-3.5 w-3.5"/>{project.name}
-        </button>
-        <div className="mb-5 p-4 relative overflow-hidden" style={{background:gradientCss(sg.base),borderRadius:0}}>
-          <div style={{position:'absolute',bottom:-8,right:6,fontSize:'5rem',fontWeight:900,color:'#FFF',opacity:0.07,lineHeight:1,userSelect:'none',letterSpacing:'-0.05em'}}>{activeSub.slot_number}</div>
-          <p className="text-[10px] font-mono uppercase tracking-widest mb-1.5" style={{color:`${stc}66`}}>{project.name.toLowerCase()} · sub-project</p>
-          <div style={{display:'inline-block',border:`1px solid ${stc}`,padding:'3px 10px'}}>
-            <span className="text-lg font-bold" style={{color:stc}}>{activeSub.name}</span>
-          </div>
-          {activeSub.description&&<p className="mt-1.5 text-xs" style={{color:`${stc}99`}}>{activeSub.description}</p>}
-        </div>
-        <PostFeed channelId={channel.id} projectId={activeSub.id}/>
-        <FloatingActions defaultChannelId={channel.id} defaultProjectId={activeSub.id}/>
-      </div>
-    );
-  }
+  const hideSub=async(p:ChannelProject)=>{
+    await supabase.from('channel_projects').update({is_hidden:!p.is_hidden}).eq('id',p.id);
+    loadSubs();
+  };
 
-  // ── Main project view ──
+  // Smart deletion: if only 2 subs remain, cascade-delete both and return posts to parent
+  const delSub=async(p:ChannelProject)=>{
+    if(!window.confirm(`Delete "${p.name}"?`))return;
+    if(subProjects.length<=2){
+      // Move all posts from every sub back to parent, then deactivate all subs
+      for(const sub of subProjects){
+        await supabase.from('posts').update({project_id:project.id}).eq('project_id',sub.id);
+        await supabase.from('channel_projects').update({is_active:false}).eq('id',sub.id);
+      }
+      toast.success('sub-projects removed — posts returned to parent');
+    } else {
+      await supabase.from('posts').update({project_id:project.id}).eq('project_id',p.id);
+      await supabase.from('channel_projects').update({is_active:false}).eq('id',p.id);
+      toast.success('sub-project removed');
+    }
+    loadSubs();
+  };
+
+  // Auto-categorize: when adding the FIRST sub-tile to a page with existing posts,
+  // move those posts into a new "Untitled" bucket automatically first.
+  const handleAddTile=async()=>{
+    if(subProjects.length===0){
+      const {count}=await supabase.from('posts').select('*',{count:'exact',head:true}).eq('project_id',project.id);
+      if((count??0)>0){
+        const freeSlot=1;
+        const {data:untitled,error:e1}=await supabase.from('channel_projects').insert({
+          slot_number:freeSlot,name:'Untitled',is_active:true,is_hidden:false,
+          parent_project_id:project.id,project_type:'project',gradient_idx:21,
+        }).select().maybeSingle();
+        if(e1||!untitled){toast.error('auto-categorize failed: '+e1?.message);return;}
+        await supabase.from('posts').update({project_id:untitled.id}).eq('project_id',project.id);
+        toast.success('existing posts moved to "Untitled" — now name your new folder');
+        await loadSubs();
+      }
+    }
+    setShowAddSub(true);
+  };
+
   return (
     <div>
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider mb-4 hover:text-primary" style={{color:'#A09890'}}>
-        <ArrowLeft className="h-3.5 w-3.5"/>back
+        <ArrowLeft className="h-3.5 w-3.5"/>
+        {breadcrumb??'back'}
       </button>
 
       {/* Project header */}
@@ -444,7 +464,7 @@ const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelPr
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-mono uppercase tracking-widest" style={{color:'rgba(255,255,255,0.25)'}}>sub-projects</p>
             {isAdmin&&(
-              <button onClick={()=>setShowAddSub(true)} className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider hover:opacity-80" style={{color:'#E8734A'}}>
+              <button onClick={handleAddTile} className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider hover:opacity-80" style={{color:'#E8734A'}}>
                 <Plus className="h-3 w-3"/>add tile
               </button>
             )}
@@ -454,7 +474,9 @@ const ProjectView = ({channel,project,onBack}:{channel:Channel;project:ChannelPr
             {subProjects.map(p=>(
               p.is_locked
                 ?<LockedTile key={p.id} title={p.name}/>
-                :<ProjectTile key={p.id} project={p} isAdmin={isAdmin} onClick={()=>setActiveSub(p)} onEdit={()=>setEditSub(p)} onHide={()=>hideSub(p)} onDelete={()=>delSub(p)}/>
+                :<ProjectTile key={p.id} project={p} isAdmin={isAdmin}
+                    onClick={()=>onSelectSub(p)}
+                    onEdit={()=>setEditSub(p)} onHide={()=>hideSub(p)} onDelete={()=>delSub(p)}/>
             ))}
           </div>
           {subProjects.length===0&&isAdmin&&(
@@ -1022,8 +1044,8 @@ const SkillsView = ({channel,isAdmin,onSelectSkill,onBack}:{channel:Channel;isAd
 
   const load=useCallback(async()=>{
     const q=isAdmin
-      ?supabase.from('channel_projects').select('*').eq('is_active',true).eq('project_type','skill').order('slot_number')
-      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).eq('project_type','skill').order('slot_number');
+      ?supabase.from('channel_projects').select('*').eq('is_active',true).eq('project_type','skill').is('parent_project_id',null).order('slot_number')
+      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).eq('project_type','skill').is('parent_project_id',null).order('slot_number');
     const {data}=await q;setSkills(data??[]);
   },[isAdmin]);
   useEffect(()=>{load();},[load]);
@@ -1091,8 +1113,8 @@ const AllProjectsView = ({channel,isAdmin,onSelectProject,onBack}:{
 
   const load=useCallback(async()=>{
     const q=isAdmin
-      ?supabase.from('channel_projects').select('*').eq('is_active',true).order('slot_number')
-      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).order('slot_number');
+      ?supabase.from('channel_projects').select('*').eq('is_active',true).is('parent_project_id',null).order('slot_number')
+      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).is('parent_project_id',null).order('slot_number');
     const {data}=await q;
     setProjects((data??[]).filter((p:ChannelProject)=>p.project_type!=='skill'));
   },[isAdmin]);
@@ -1138,8 +1160,8 @@ const HubView = ({isAdmin,onInfoSkills,onAllProjects}:{
 
   const load=useCallback(async()=>{
     const q=isAdmin
-      ?supabase.from('channel_projects').select('*').eq('is_active',true).order('slot_number')
-      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).order('slot_number');
+      ?supabase.from('channel_projects').select('*').eq('is_active',true).is('parent_project_id',null).order('slot_number')
+      :supabase.from('channel_projects').select('*').eq('is_active',true).eq('is_hidden',false).is('parent_project_id',null).order('slot_number');
     const {data}=await q;
     setProjects((data??[]).filter((p:ChannelProject)=>p.project_type!=='skill'));
   },[isAdmin]);
@@ -1179,18 +1201,40 @@ export const GeneralChannelPage = ({channel}:{channel:Channel}) => {
   const {isAdmin}=useAuth();
   type View='hub'|'all-projects'|'info-skills'|'info-flow'|'expert'|'skills'|'project'|'skill-detail';
   const [history,setHistory]=useState<View[]>(['hub']);
-  const [activeProject,setActiveProject]=useState<ChannelProject|null>(null);
+  // projectStack supports 10-level deep recursive subproject navigation
+  const [projectStack,setProjectStack]=useState<ChannelProject[]>([]);
   const view=history[history.length-1];
   const push=(v:View)=>setHistory(h=>[...h,v]);
   const pop=()=>setHistory(h=>h.length>1?h.slice(0,-1):h);
 
-  if(view==='project'&&activeProject) return <ProjectView channel={channel} project={activeProject} onBack={pop}/>;
-  if(view==='skill-detail'&&activeProject) return <ProjectView channel={channel} project={activeProject} onBack={pop}/>;
+  const enterProject=(p:ChannelProject,viewType:View='project')=>{
+    setProjectStack([p]);push(viewType);
+  };
+  const enterSubProject=(p:ChannelProject)=>{
+    setProjectStack(s=>[...s,p]);
+    // Don't push to history stack — we're still in 'project' view, just going deeper
+  };
+  const projectBack=()=>{
+    if(projectStack.length>1){setProjectStack(s=>s.slice(0,-1));}
+    else{setProjectStack([]);pop();}
+  };
+
+  const currentProject=projectStack[projectStack.length-1]??null;
+  const parentName=projectStack.length>1?projectStack[projectStack.length-2].name:'all projects';
+
+  if((view==='project'||view==='skill-detail')&&currentProject){
+    return <ProjectView
+      channel={channel} project={currentProject}
+      onBack={projectBack}
+      onSelectSub={enterSubProject}
+      breadcrumb={parentName}
+    />;
+  }
   if(view==='expert') return <ExpertDirectoryView onBack={pop}/>;
-  if(view==='skills') return <SkillsView channel={channel} isAdmin={isAdmin} onSelectSkill={p=>{setActiveProject(p);push('skill-detail');}} onBack={pop}/>;
+  if(view==='skills') return <SkillsView channel={channel} isAdmin={isAdmin} onSelectSkill={p=>enterProject(p,'skill-detail')} onBack={pop}/>;
   if(view==='info-flow') return <InfoFlowView onExpertDir={()=>push('expert')} onBack={pop}/>;
-  if(view==='info-skills') return <InfoSkillsView channel={channel} isAdmin={isAdmin} onInfoFlow={()=>push('info-flow')} onSkillsEnter={()=>push('skills')} onBack={pop} onSelectSkill={p=>{setActiveProject(p);push('skill-detail');}}/>;
-  if(view==='all-projects') return <AllProjectsView channel={channel} isAdmin={isAdmin} onSelectProject={p=>{setActiveProject(p);push('project');}} onBack={pop}/>;
+  if(view==='info-skills') return <InfoSkillsView channel={channel} isAdmin={isAdmin} onInfoFlow={()=>push('info-flow')} onSkillsEnter={()=>push('skills')} onBack={pop} onSelectSkill={p=>enterProject(p,'skill-detail')}/>;
+  if(view==='all-projects') return <AllProjectsView channel={channel} isAdmin={isAdmin} onSelectProject={p=>enterProject(p,'project')} onBack={pop}/>;
 
   return (
     <>
