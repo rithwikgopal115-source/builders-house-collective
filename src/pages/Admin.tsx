@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { AvatarBlock } from "@/components/AvatarBlock";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MessageSquare, Zap, Send, ChevronDown, ChevronUp, Youtube, Globe, Lock, Eye, EyeOff, Shield, ShieldOff, Settings2 } from "lucide-react";
+import { MessageSquare, Zap, Send, ChevronDown, ChevronUp, Youtube, Globe, Lock, Eye, EyeOff, Shield, ShieldOff, Settings2, Bot, RefreshCw, Clock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 // ─── Shared pill button ───────────────────────────────────────────────────────
@@ -56,13 +56,17 @@ const Admin = () => {
   const [yoloMode, setYoloMode]           = useState(false);
   const [dmRequest, setDmRequest]         = useState<any>(null);
   const [permissionsMember, setPermissionsMember] = useState<any>(null);
+  const [agentEnabled, setAgentEnabled]   = useState(true);
+  const [agentFrequency, setAgentFrequency] = useState(6);
+  const [agentLastRun, setAgentLastRun]   = useState<string | null>(null);
+  const [agentRunning, setAgentRunning]   = useState(false);
 
   const loadAll = async () => {
     const [{ data: r }, { data: m }, { data: c }, { data: s }, { data: p }] = await Promise.all([
       supabase.from("access_requests").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").eq("is_approved", true).order("created_at", { ascending: false }),
       supabase.from("channels").select("id, slug, name, is_public_visible, intro_video_url, sort_order").order("sort_order"),
-      supabase.from("admin_settings").select("auto_yolo_enabled").eq("id", 1).maybeSingle(),
+      supabase.from("admin_settings").select("auto_yolo_enabled, ai_news_agent_enabled, ai_news_agent_frequency_hours, ai_news_last_run").eq("id", 1).maybeSingle(),
       supabase.from("channel_projects")
         .select("*")
         .eq("is_active", true)
@@ -73,6 +77,9 @@ const Admin = () => {
     setMembers(m ?? []);
     setChannels(c ?? []);
     setYoloMode(!!s?.auto_yolo_enabled);
+    setAgentEnabled(s?.ai_news_agent_enabled ?? true);
+    setAgentFrequency(s?.ai_news_agent_frequency_hours ?? 6);
+    setAgentLastRun(s?.ai_news_last_run ?? null);
     setProjects(p ?? []);
   };
 
@@ -86,6 +93,34 @@ const Admin = () => {
     const { error } = await supabase.from("admin_settings").update({ auto_yolo_enabled: val, updated_at: new Date().toISOString() }).eq("id", 1);
     if (error) { toast.error(error.message); setYoloMode(!val); return; }
     toast.success(val ? "auto yolo is live" : "back to manual review");
+  };
+
+  const toggleAgent = async (val: boolean) => {
+    setAgentEnabled(val);
+    const { error } = await supabase.from("admin_settings").update({ ai_news_agent_enabled: val }).eq("id", 1);
+    if (error) { toast.error(error.message); setAgentEnabled(!val); return; }
+    toast.success(val ? "AI Scout is now active" : "AI Scout paused");
+  };
+
+  const saveAgentFrequency = async (hours: number) => {
+    setAgentFrequency(hours);
+    const { error } = await supabase.from("admin_settings").update({ ai_news_agent_frequency_hours: hours }).eq("id", 1);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Agent will run every ${hours}h`);
+  };
+
+  const runAgentNow = async () => {
+    setAgentRunning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-news-agent", { body: {} });
+      if (error) { toast.error(error.message); return; }
+      if (data?.error) { toast.error(data.error); return; }
+      if (data?.skipped) { toast.info("Agent is currently disabled"); return; }
+      toast.success(`AI Scout posted ${data?.posted ?? 0} new stories`);
+      loadAll();
+    } finally {
+      setAgentRunning(false);
+    }
   };
 
   const yoloOnboard = async (request: any) => {
@@ -161,6 +196,9 @@ const Admin = () => {
             <TabsTrigger value="members">members ({members.length})</TabsTrigger>
             <TabsTrigger value="channels">channels</TabsTrigger>
             <TabsTrigger value="projects">projects</TabsTrigger>
+            <TabsTrigger value="ai-scout" className="flex items-center gap-1.5">
+              <Bot className="h-3.5 w-3.5" /> ai scout
+            </TabsTrigger>
           </TabsList>
 
           {/* ── Requests ── */}
@@ -305,6 +343,112 @@ const Admin = () => {
             {projects.map((p) => (
               <ProjectAdminRow key={p.id} project={p} onUpdate={loadAll} />
             ))}
+          </TabsContent>
+
+          {/* ── AI Scout ── */}
+          <TabsContent value="ai-scout" className="space-y-4">
+            <p className="text-xs font-mono mb-2" style={{ color: "#6A6460" }}>
+              AI Scout crawls top AI news sources every few hours and auto-posts the best stories to the ai-news channel.
+            </p>
+
+            {/* Status card */}
+            <div
+              className="p-5 transition-all"
+              style={{
+                background: "#161616",
+                border: agentEnabled ? "1px solid rgba(29,106,229,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                borderRadius: 16,
+                boxShadow: agentEnabled ? "0 0 20px rgba(29,106,229,0.15)" : "none",
+              }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-9 w-9 flex items-center justify-center"
+                    style={{ background: agentEnabled ? "#1D6AE5" : "#1E1E1E", borderRadius: 10 }}
+                  >
+                    <Bot className="h-4 w-4" style={{ color: agentEnabled ? "#fff" : "#4A4A4A" }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: agentEnabled ? "#1D6AE5" : "#F5F0EB" }}>
+                      {agentEnabled ? "AI Scout is live" : "AI Scout is paused"}
+                    </p>
+                    <p className="text-[11px] font-mono" style={{ color: "#6A6460" }}>
+                      {agentEnabled
+                        ? `crawling AI news every ${agentFrequency}h and posting to ai-news`
+                        : "enable to start auto-posting AI news"}
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={agentEnabled} onCheckedChange={toggleAgent} />
+              </div>
+
+              {agentLastRun && (
+                <div className="flex items-center gap-1.5 mb-4" style={{ color: "#6A6460" }}>
+                  <Clock className="h-3 w-3" />
+                  <span className="text-[11px] font-mono">
+                    last run: {new Date(agentLastRun).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>crawl frequency</p>
+                <div className="flex gap-2 flex-wrap">
+                  {[3, 6, 12, 24].map((h) => (
+                    <button
+                      key={h}
+                      onClick={() => saveAgentFrequency(h)}
+                      className="font-mono transition-colors"
+                      style={{
+                        background: agentFrequency === h ? "#1D6AE5" : "#1E1E1E",
+                        color: agentFrequency === h ? "#fff" : "#A09890",
+                        border: agentFrequency === h ? "1px solid #1D6AE5" : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 999,
+                        padding: "4px 14px",
+                        fontSize: 12,
+                      }}
+                    >
+                      every {h}h
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={runAgentNow}
+                disabled={agentRunning}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-mono transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: "#1D6AE5", color: "#fff", borderRadius: 10 }}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${agentRunning ? "animate-spin" : ""}`} />
+                {agentRunning ? "running…" : "run now"}
+              </button>
+            </div>
+
+            {/* Sources */}
+            <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden" }}>
+              <div className="px-5 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#8A8480" }}>sources crawled</p>
+              </div>
+              {["TechCrunch AI", "MIT Technology Review", "VentureBeat AI", "The Decoder", "Hugging Face Blog", "AI News"].map((src) => (
+                <div key={src} className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                  <div className="h-1.5 w-1.5 rounded-full" style={{ background: "#1D6AE5" }} />
+                  <span className="text-sm" style={{ color: "#F5F0EB" }}>{src}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Setup instructions */}
+            <div className="p-4" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}>
+              <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#8A8480" }}>setup required (one-time)</p>
+              <p className="text-xs font-mono leading-relaxed" style={{ color: "#6A6460" }}>
+                1. Run the SQL migration in your Supabase SQL editor<br />
+                2. Deploy: <span style={{ color: "#F5F0EB" }}>supabase functions deploy ai-news-agent</span><br />
+                3. (Optional) Add <span style={{ color: "#F5F0EB" }}>GEMINI_API_KEY</span> to Supabase Edge Function secrets for AI blurbs<br />
+                4. Toggle ON above and hit "run now" to test it
+              </p>
+            </div>
           </TabsContent>
         </Tabs>
 
