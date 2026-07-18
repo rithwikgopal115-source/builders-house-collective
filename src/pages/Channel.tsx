@@ -714,4 +714,18 @@ const EditPostComposer = ({
               {isAdmin && <button onClick={() => setVisibility("private")} className="flex items-center gap-1.5 font-mono" style={PillStyle(visibility === "private")}><Lock className="h-3 w-3" /> private</button>}
             </div>
           </div>
-          <l
+          <label className="flex items-center gap-2 text-xs font-mono cursor-pointer" style={{ color: "#A09890" }}>
+            <input type="checkbox" checked={isResource} onChange={(e) => setIsResource(e.target.checked)} />
+            save to resources tab (curated)
+          </label>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} style={{ color: "#A09890" }}>cancel</Button>
+            <Button onClick={save} disabled={busy} className="px-8">{busy ? "saving…" : "save changes"}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default ChannelPage;
