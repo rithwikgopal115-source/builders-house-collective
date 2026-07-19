@@ -153,9 +153,34 @@ const Home = () => {
   const slugs = ["resources", "ai-news", "ideas", "vibing", "hiring", "wins"];
   const previews = Object.fromEntries(slugs.map((s) => [s, postsByChannel[s]?.[0] ?? null]));
 
+  const downloadOldPosts = async () => {
+    try {
+      const { data, error } = await supabase.from('posts').select('*');
+      if (error) throw error;
+      const { data: profilesData } = await supabase.from('profiles').select('*');
+      
+      const combined = { posts: data, profiles: profilesData };
+      const blob = new Blob([JSON.stringify(combined, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'my_old_lovable_data.json';
+      a.click();
+      toast.success("Successfully downloaded old posts and profiles!");
+    } catch (e: any) {
+      toast.error("Failed to download: " + e.message);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="px-5 md:px-8 pt-6 pb-32 max-w-6xl mx-auto">
+        <div className="mb-8">
+          <button onClick={downloadOldPosts} className="w-full text-white font-bold py-4 px-6 rounded-lg text-lg" style={{ backgroundColor: '#ff0000' }}>
+            CLICK HERE TO DOWNLOAD ALL OLD POSTS
+          </button>
+        </div>
+
         <header className="mb-5">
           <h1 className="text-xl md:text-2xl font-medium tracking-tight mb-1" style={{ color: "#F5F0EB", letterSpacing: "-0.02em" }}>
             member dashboard
