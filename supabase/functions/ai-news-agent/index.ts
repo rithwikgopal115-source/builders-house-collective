@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
       }
 
       // Mark URL as posted to prevent duplicates
-      await db.from("ai_news_posted").insert({ url: item.link }).catch(() => {});
+      await db.from("ai_news_posted").insert({ url: item.link });
       postedCount++;
     }
 
